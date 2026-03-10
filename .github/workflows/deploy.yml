@@ -20,17 +20,14 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # Debug: show build output structure
-      - name: Show build output
+      # Bundle worker and server-side code into assets for Pages
+      - name: Prepare Pages bundle
         run: |
-          echo "=== .open-next root ==="
-          ls -la .open-next/
-          echo "=== .open-next/assets ==="
-          ls -la .open-next/assets/
-          echo "=== .open-next/assets/_next/static/chunks (first 10) ==="
-          ls .open-next/assets/_next/static/chunks/ | head -10
-          echo "=== worker.js first line ==="
-          head -1 .open-next/worker.js
+          cp .open-next/worker.js .open-next/assets/_worker.js
+          cp -r .open-next/cloudflare .open-next/assets/cloudflare
+          cp -r .open-next/middleware .open-next/assets/middleware
+          cp -r .open-next/server-functions .open-next/assets/server-functions
+          cp -r .open-next/.build .open-next/assets/.build 2>/dev/null || true
 
       - uses: cloudflare/wrangler-action@v3
         with:
