@@ -20,6 +20,18 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # Debug: show build output structure
+      - name: Show build output
+        run: |
+          echo "=== .open-next root ==="
+          ls -la .open-next/
+          echo "=== .open-next/assets ==="
+          ls -la .open-next/assets/
+          echo "=== .open-next/assets/_next/static/chunks (first 10) ==="
+          ls .open-next/assets/_next/static/chunks/ | head -10
+          echo "=== worker.js first line ==="
+          head -1 .open-next/worker.js
+
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
