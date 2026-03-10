@@ -8,10 +8,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for auth cookie (value may be URL-encoded by the runtime)
+  // Check for auth cookie
   const auth = request.cookies.get("cb_auth");
-  const decoded = auth?.value ? decodeURIComponent(auth.value) : "";
-  if (decoded === "Testing123#") {
+  if (auth?.value === "Testing123") {
     return NextResponse.next();
   }
 
