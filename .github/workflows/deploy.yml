@@ -20,25 +20,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Prepare Pages bundle
-        run: |
-          cp .open-next/worker.js .open-next/assets/_worker.js
-          cp -r .open-next/cloudflare .open-next/assets/cloudflare
-          cp -r .open-next/middleware .open-next/assets/middleware
-          cp -r .open-next/server-functions .open-next/assets/server-functions
-          cp -r .open-next/.build .open-next/assets/.build 2>/dev/null || true
-
-      - name: Debug assets
-        run: |
-          echo "=== JS chunks in assets ==="
-          ls .open-next/assets/_next/static/chunks/*.js | head -10
-          echo "=== Total files in assets ==="
-          find .open-next/assets -type f | wc -l
-          echo "=== _worker.js exists ==="
-          ls -la .open-next/assets/_worker.js
-
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy .open-next/assets --project-name=collectibot-web --branch=main --commit-dirty=true
+      - run: npx @opennextjs/cloudflare deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
