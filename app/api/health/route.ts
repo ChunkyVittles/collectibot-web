@@ -6,45 +6,32 @@ export async function GET() {
     timestamp: new Date().toISOString(),
   };
 
-  // Check cloudflare context
   try {
     const store = (globalThis as any)[Symbol.for("__cloudflare-context__")];
     info.cfContext = store ? "exists" : "missing";
-    if (store?.env) {
-      info.envKeys = Object.keys(store.env).join(",");
-      if (store.env.HYPERDRIVE) {
-        info.hyperdrive = "bound";
-        info.hyperdriveConnStr = store.env.HYPERDRIVE.connectionString
-          ? "set (length=" + store.env.HYPERDRIVE.connectionString.length + ")"
-          : "not set";
-      }
+    if (store?.env?.HYPERDRIVE) {
+      info.hyperdrive = "bound";
     }
   } catch (e: any) {
     info.cfContextError = e.message;
   }
 
-  // Check DATABASE_URL
-  info.dbUrlSet = process.env.DATABASE_URL ? "yes" : "no";
-
-  // Try pg import
   try {
-    const { Pool } = await import("pg");
+    const pg = await import("pg");
     info.pgImport = "success";
+    info.pgExports = Object.keys(pg).join(",");
 
-    // Try connecting
+    // Try Client instead of Pool
     try {
       const store = (globalThis as any)[Symbol.for("__cloudflare-context__")];
-      const connStr =
-        store?.env?.HYPERDRIVE?.connectionString ||
-        process.env.DATABASE_URL ||
-        "";
-      info.usingConnStr = connStr ? "length=" + connStr.length : "empty";
+      const connStr = store?.env?.HYPERDRIVE?.connectionString || process.env.DATABASE_URL || "";
 
-      const pool = new Pool({ connectionString: connStr });
-      const result = await pool.query("SELECT 1 AS ok");
+      const client = new pg.Client({ connectionString: connStr });
+      await client.connect();
+      const result = await client.query("SELECT 1 AS ok");
       info.dbConnected = "yes";
       info.dbResult = JSON.stringify(result.rows[0]);
-      await pool.end();
+      await client.end();
     } catch (e: any) {
       info.dbConnected = "no";
       info.dbError = e.message;
