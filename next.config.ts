@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: [],
+  transpilePackages: ["pg", "pg-cloudflare", "pg-pool", "pg-protocol", "pg-types"],
 };
 
 export default nextConfig;
