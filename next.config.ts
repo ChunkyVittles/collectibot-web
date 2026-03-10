@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: [],
-  transpilePackages: ["pg", "pg-cloudflare", "pg-pool", "pg-protocol", "pg-types"],
+  transpilePackages: ["pg", "pg-pool", "pg-protocol", "pg-types", "pg-connection-string"],
 };
 
 export default nextConfig;
