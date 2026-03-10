@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
   const contains = `%${raw}%`;
   const startsWith = `${raw}%`;
 
+  try {
   const [series, creators, characters] = await Promise.all([
     pool.query(
       `SELECT s.id, s.name, s.year_began, s.year_ended, p.name AS publisher
@@ -71,4 +72,13 @@ export async function GET(request: NextRequest) {
   ];
 
   return NextResponse.json({ results });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error("Search API error:", message, stack);
+    return NextResponse.json(
+      { error: message, dbUrl: process.env.DATABASE_URL ? "set" : "NOT SET" },
+      { status: 500 }
+    );
+  }
 }
