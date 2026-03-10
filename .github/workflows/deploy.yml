@@ -20,7 +20,36 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - run: npx @opennextjs/cloudflare deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Prepare Pages bundle
+        run: |
+          # Copy worker and server code into assets so Pages can serve them
+          cp .open-next/worker.js .open-next/assets/_worker.js
+          cp -r .open-next/cloudflare .open-next/assets/cloudflare
+          cp -r .open-next/middleware .open-next/assets/middleware
+          cp -r .open-next/server-functions .open-next/assets/server-functions
+          cp -r .open-next/.build .open-next/assets/.build 2>/dev/null || true
+
+          # Generate _routes.json to tell Pages which paths should bypass the worker
+          # and be served as static assets directly
+          cat > .open-next/assets/_routes.json << 'ROUTES'
+          {
+            "version": 1,
+            "include": ["/*"],
+            "exclude": [
+              "/_next/static/*",
+              "/favicon.ico",
+              "/file.svg",
+              "/globe.svg",
+              "/next.svg",
+              "/vercel.svg",
+              "/window.svg",
+              "/BUILD_ID"
+            ]
+          }
+          ROUTES
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy .open-next/assets --project-name=collectibot-web --branch=main --commit-dirty=true
