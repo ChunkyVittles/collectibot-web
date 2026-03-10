@@ -14,7 +14,7 @@ function getConnectionString(): string {
 
 // Wrapper that provides a pg-compatible query interface using postgres.js
 const pool = {
-  async query<R = Record<string, unknown>>(
+  async query<R = any>(
     text: string,
     values?: unknown[]
   ): Promise<{ rows: R[]; rowCount: number }> {
