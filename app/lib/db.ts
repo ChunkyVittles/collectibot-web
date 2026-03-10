@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import { Pool, QueryResult, QueryResultRow } from "pg";
 
 function getConnectionString(): string {
   // In Cloudflare Workers with Hyperdrive, get connection string from the binding
@@ -13,11 +13,17 @@ function getConnectionString(): string {
   return process.env.DATABASE_URL || "";
 }
 
-// Pool must be created per-request in Workers (no persistent state between requests)
 const pool = {
-  query(...args: Parameters<Pool["query"]>) {
+  async query<R extends QueryResultRow = any>(
+    text: string,
+    values?: unknown[]
+  ): Promise<QueryResult<R>> {
     const p = new Pool({ connectionString: getConnectionString() });
-    return p.query(...args).finally(() => p.end());
+    try {
+      return await p.query<R>(text, values);
+    } finally {
+      await p.end();
+    }
   },
 };
 
