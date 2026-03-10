@@ -7,5 +7,9 @@
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
-  }
+  },
+  "routes": [
+    { "pattern": "collectibot.com/*", "zone_name": "collectibot.com" },
+    { "pattern": "www.collectibot.com/*", "zone_name": "collectibot.com" }
+  ]
 }
