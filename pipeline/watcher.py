@@ -23,8 +23,9 @@ from dotenv import load_dotenv
 from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 
-from identifier import identify_front, identify_back
+from identifier import identify_front
 from matcher import match_issue
+from splitter import split_all_in_directory
 from uploader import upload_pair
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -224,41 +225,36 @@ def process_pair(front: Path, back: Path):
     shutil.move(str(back), str(proc_back))
 
     try:
-        # Identify front cover
+        # Identify front cover only — back covers are just associated, not scanned
         log.info(f"  Identifying front: {proc_front.name}")
         front_data = identify_front(proc_front)
         log.info(f"  Front data: {json.dumps(front_data)}")
 
-        # Identify back cover
-        log.info(f"  Identifying back: {proc_back.name}")
-        back_data = identify_back(proc_back)
-        log.info(f"  Back data: {json.dumps(back_data)}")
-
-        # Match against database
+        # Match against database (no back cover data)
         log.info("  Matching against database...")
-        match = match_issue(front_data, back_data)
+        match = match_issue(front_data, None)
         confidence = match.get("confidence", 0)
 
         # --- Validation gate ---
         title = front_data.get("title")
         issue_number = front_data.get("issue_number")
-        year = _resolve_year(front_data, back_data, match)
+        year = _resolve_year(front_data, {}, match)
 
         if not title:
-            _send_to_review(base, proc_front, proc_back, front_data, back_data, match, "missing title")
+            _send_to_review(base, proc_front, proc_back, front_data, {}, match, "missing title")
             return
 
         if not issue_number:
-            _send_to_review(base, proc_front, proc_back, front_data, back_data, match, "missing issue_number")
+            _send_to_review(base, proc_front, proc_back, front_data, {}, match, "missing issue_number")
             return
 
         if not year:
-            _send_to_review(base, proc_front, proc_back, front_data, back_data, match, "missing year")
+            _send_to_review(base, proc_front, proc_back, front_data, {}, match, "missing year")
             return
 
         if confidence < 80:
             _send_to_review(
-                base, proc_front, proc_back, front_data, back_data, match,
+                base, proc_front, proc_back, front_data, {}, match,
                 f"low confidence ({confidence}%)",
             )
             return
@@ -292,13 +288,20 @@ class InboxHandler(FileSystemEventHandler):
     def on_created(self, event):
         if event.is_directory:
             return
+        # Delay to let files finish writing
         time.sleep(2)
-        pairs = find_pairs(INBOX)
-        for front, back in pairs:
+        # Split any landscape images first
+        split_all_in_directory(INBOX)
+        # Process pairs one at a time, re-scanning after each
+        while True:
+            pairs = find_pairs(INBOX)
+            if not pairs:
+                break
             try:
-                process_pair(front, back)
+                process_pair(pairs[0][0], pairs[0][1])
             except Exception as e:
                 log.error(f"Unhandled error: {e}", exc_info=True)
+                break
 
 
 def main():
@@ -309,12 +312,19 @@ def main():
     log.info("Drop front/back pairs to begin processing.")
     log.info("Press Ctrl+C to stop.\n")
 
-    pairs = find_pairs(INBOX)
-    for front, back in pairs:
+    # Split any landscape images already in inbox
+    split_all_in_directory(INBOX)
+
+    # Process pairs one at a time, re-scanning after each
+    while True:
+        pairs = find_pairs(INBOX)
+        if not pairs:
+            break
         try:
-            process_pair(front, back)
+            process_pair(pairs[0][0], pairs[0][1])
         except Exception as e:
             log.error(f"Unhandled error: {e}", exc_info=True)
+            break
 
     observer = PollingObserver(timeout=5)
     observer.schedule(InboxHandler(), str(INBOX), recursive=False)

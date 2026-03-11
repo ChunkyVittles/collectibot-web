@@ -1,6 +1,7 @@
 import pool from "@/app/lib/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import DeleteScansButton from "@/app/components/DeleteScansButton";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -49,28 +50,31 @@ export default async function IssuePage({ params }: Props) {
       </p>
 
       {(hasFront || hasBack) && (
-        <div style={{ display: "flex", gap: 20, marginTop: 24 }}>
-          {hasFront && (
-            <div style={{ flex: 1, textAlign: "center" }}>
-              <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Front Cover</div>
-              <img
-                src={`/api/scans/image?issue=${issue.id}&side=front`}
-                alt={`${issue.series_name} #${issue.number} front cover`}
-                style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
-              />
-            </div>
-          )}
-          {hasBack && (
-            <div style={{ flex: 1, textAlign: "center" }}>
-              <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Back Cover</div>
-              <img
-                src={`/api/scans/image?issue=${issue.id}&side=back`}
-                alt={`${issue.series_name} #${issue.number} back cover`}
-                style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
-              />
-            </div>
-          )}
-        </div>
+        <>
+          <div style={{ display: "flex", gap: 20, marginTop: 24 }}>
+            {hasFront && (
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Front Cover</div>
+                <img
+                  src={`/api/scans/image?issue=${issue.id}&side=front`}
+                  alt={`${issue.series_name} #${issue.number} front cover`}
+                  style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
+                />
+              </div>
+            )}
+            {hasBack && (
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Back Cover</div>
+                <img
+                  src={`/api/scans/image?issue=${issue.id}&side=back`}
+                  alt={`${issue.series_name} #${issue.number} back cover`}
+                  style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
+                />
+              </div>
+            )}
+          </div>
+          <DeleteScansButton issueId={issue.id} />
+        </>
       )}
 
       <div style={{ marginTop: 32 }}>
