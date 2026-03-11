@@ -14,7 +14,9 @@ import json
 import logging
 import os
 import re
+import signal
 import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -29,6 +31,22 @@ from splitter import split_all_in_directory
 from uploader import upload_pair
 
 load_dotenv(Path(__file__).parent / ".env")
+
+
+def kill_existing_watchers():
+    """Kill any other watcher.py processes before starting."""
+    current_pid = os.getpid()
+    result = subprocess.run(
+        ["pgrep", "-f", "watcher.py"],
+        capture_output=True, text=True,
+    )
+    for pid_str in result.stdout.strip().split("\n"):
+        if pid_str and int(pid_str) != current_pid:
+            try:
+                os.kill(int(pid_str), signal.SIGKILL)
+                print(f"Killed stale watcher PID {pid_str}")
+            except ProcessLookupError:
+                pass
 
 INBOX = Path.home() / "collectibot-scans" / "inbox"
 PROCESSING = Path.home() / "collectibot-scans" / "processing"
@@ -284,12 +302,48 @@ def process_pair(front: Path, back: Path):
                 shutil.move(str(p), str(INBOX / p.name))
 
 
+def wait_for_stable_files(directory: Path, interval: float = 1.0, required_stable: int = 3, timeout: float = 30.0):
+    """Wait until all image files in directory stop changing size.
+
+    Polls every `interval` seconds. Files are considered stable when their
+    sizes haven't changed for `required_stable` consecutive checks.
+    Gives up after `timeout` seconds with a warning.
+    """
+    stable_count = 0
+    prev_sizes: dict[str, int] = {}
+    start = time.time()
+
+    while time.time() - start < timeout:
+        current_sizes: dict[str, int] = {}
+        for f in directory.iterdir():
+            if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}:
+                try:
+                    current_sizes[f.name] = f.stat().st_size
+                except OSError:
+                    pass
+
+        if not current_sizes:
+            return  # No image files
+
+        if current_sizes == prev_sizes:
+            stable_count += 1
+            if stable_count >= required_stable:
+                return
+        else:
+            stable_count = 0
+
+        prev_sizes = current_sizes
+        time.sleep(interval)
+
+    log.warning(f"Files in {directory} did not stabilize within {timeout}s — proceeding anyway")
+
+
 class InboxHandler(FileSystemEventHandler):
     def on_created(self, event):
         if event.is_directory:
             return
-        # Delay to let files finish writing
-        time.sleep(2)
+        # Wait until all files stop being written to (scanner temp files)
+        wait_for_stable_files(INBOX)
         # Split any landscape images first
         split_all_in_directory(INBOX)
         # Process pairs one at a time, re-scanning after each
@@ -305,6 +359,8 @@ class InboxHandler(FileSystemEventHandler):
 
 
 def main():
+    kill_existing_watchers()
+
     for d in [INBOX, PROCESSING, DONE, REVIEW]:
         d.mkdir(parents=True, exist_ok=True)
 

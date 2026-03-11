@@ -16,7 +16,7 @@ export default function RecentScans() {
   useEffect(() => {
     fetch("/api/scans/recent")
       .then((r) => r.json())
-      .then((data) => setScans(data))
+      .then((data) => { if (Array.isArray(data)) setScans(data); })
       .catch(() => {});
   }, []);
 
