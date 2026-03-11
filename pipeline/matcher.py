@@ -73,7 +73,8 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                 i.number AS issue_number,
                 s.year_began,
                 s.year_ended,
-                p.name AS publisher_name
+                p.name AS publisher_name,
+                i.price AS db_price
             FROM issues i
             JOIN series s ON i.series_id = s.id
             LEFT JOIN publishers p ON s.publisher_id = p.id
@@ -104,8 +105,19 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
         best = None
         best_score = 0
 
+        # Extract USD price from front data for comparison
+        extracted_price = front_data.get("price", "")
+        extracted_usd = None
+        if extracted_price:
+            usd_match = re.search(r"\$?([\d.]+)\s*(?:us|usd)?", str(extracted_price), re.IGNORECASE)
+            if usd_match:
+                try:
+                    extracted_usd = float(usd_match.group(1))
+                except ValueError:
+                    pass
+
         for row in rows:
-            issue_id, series_id, series_name, db_issue_num, yr_began, yr_ended, pub_name = row
+            issue_id, series_id, series_name, db_issue_num, yr_began, yr_ended, pub_name, db_price = row
             score = 0
 
             # Exact title match
@@ -132,6 +144,19 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                 score += 10
             elif pub_name and pub_extracted and pub_extracted in pub_name.lower():
                 score += 10
+
+            # Price match — strong signal for disambiguating same-title series
+            if extracted_usd and db_price:
+                db_usd_match = re.search(r"([\d.]+)\s*USD", str(db_price))
+                if db_usd_match:
+                    try:
+                        db_usd = float(db_usd_match.group(1))
+                        if abs(extracted_usd - db_usd) < 0.01:
+                            score += 30  # Exact price match — very strong signal
+                        elif abs(extracted_usd - db_usd) < 0.50:
+                            score += 10  # Close price
+                    except ValueError:
+                        pass
 
             if score > best_score:
                 best_score = score
