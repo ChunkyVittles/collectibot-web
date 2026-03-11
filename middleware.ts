@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow login page and login API through
-  if (pathname === "/login" || pathname === "/api/login") {
+  // Allow login page, login API, and public scan endpoints through
+  if (pathname === "/login" || pathname === "/api/login" || pathname.startsWith("/api/scans/")) {
     return NextResponse.next();
   }
 

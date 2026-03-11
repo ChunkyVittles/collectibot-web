@@ -183,7 +183,7 @@ def deskew(img: Image.Image) -> Image.Image:
         return img
 
     # Only rotate if meaningful but not extreme
-    if abs(angle) < 0.3 or abs(angle) > 20:
+    if abs(angle) < 0.1 or abs(angle) > 20:
         log.info(f"  Deskew: angle {angle:.1f}° outside range, skipping")
         return img
 
@@ -201,11 +201,10 @@ def deskew(img: Image.Image) -> Image.Image:
 
 def crop_to_content(img: Image.Image) -> Image.Image:
     """
-    Strip scanner artifact, deskew, crop tightly, then add a clean 1/2-inch white border.
+    Deskew, crop tightly, then add a clean white border.
+    Note: scanner artifact stripping is done once upfront by strip_all_in_directory,
+    NOT here — otherwise split halves get double-stripped.
     """
-    # Strip scanner artifact first
-    img = strip_scanner_artifact(img)
-    # Then deskew
     img = deskew(img)
 
     gray = np.array(ImageOps.grayscale(img))
