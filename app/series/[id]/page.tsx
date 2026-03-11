@@ -31,6 +31,22 @@ export default async function SeriesPage({ params }: Props) {
     [id]
   );
 
+  // Get all scans for issues in this series
+  const scannedRes = await pool.query(
+    `SELECT sc.issue_id, sc.scan_type
+     FROM scans sc
+     JOIN issues i ON sc.issue_id = i.id
+     WHERE i.series_id = $1`,
+    [id]
+  );
+
+  const scannedIssues = new Set<string>();
+  for (const row of scannedRes.rows) {
+    if (row.scan_type === "front_cover") {
+      scannedIssues.add(String(row.issue_id));
+    }
+  }
+
   const issues = issuesRes.rows;
   const years = series.year_ended
     ? `${series.year_began}–${series.year_ended}`
@@ -53,9 +69,38 @@ export default async function SeriesPage({ params }: Props) {
         Issues ({issues.length})
       </h2>
 
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 16, marginBottom: 32 }}>
+        {issues.filter((issue) => scannedIssues.has(String(issue.id))).map((issue) => (
+          <Link
+            key={issue.id}
+            href={`/issue/${issue.id}`}
+            style={{ textDecoration: "none", color: "inherit" }}
+          >
+            <div style={{ textAlign: "center" }}>
+              <img
+                src={`/api/scans/image?issue=${issue.id}&side=front`}
+                alt={`${series.name} #${issue.number}`}
+                style={{
+                  width: "100%",
+                  borderRadius: 4,
+                  border: "1px solid #333",
+                  aspectRatio: "2/3",
+                  objectFit: "cover",
+                  background: "#111",
+                }}
+              />
+              <div style={{ fontSize: 13, marginTop: 4, fontWeight: 600 }}>
+                #{issue.number}
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead>
           <tr style={{ borderBottom: "2px solid #333", textAlign: "left" }}>
+            <th style={{ padding: "8px 8px 8px 0", width: 40 }}></th>
             <th style={{ padding: "8px 8px 8px 0", width: 60 }}>#</th>
             <th style={{ padding: 8 }}>Date</th>
             <th style={{ padding: 8 }}>Price</th>
@@ -64,6 +109,17 @@ export default async function SeriesPage({ params }: Props) {
         <tbody>
           {issues.map((issue) => (
             <tr key={issue.id} style={{ borderBottom: "1px solid #eee" }}>
+              <td style={{ padding: "4px 8px 4px 0" }}>
+                {scannedIssues.has(String(issue.id)) ? (
+                  <img
+                    src={`/api/scans/image?issue=${issue.id}&side=front`}
+                    alt=""
+                    style={{ width: 32, height: 48, objectFit: "cover", borderRadius: 2, verticalAlign: "middle" }}
+                  />
+                ) : (
+                  <div style={{ width: 32, height: 48, background: "#1a1a1a", borderRadius: 2, border: "1px solid #333" }} />
+                )}
+              </td>
               <td style={{ padding: "6px 8px 6px 0", fontWeight: 600 }}>
                 {issue.number}
                 {issue.variant_name && (

@@ -43,3 +43,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .dev.vars
+pipeline/__pycache__/
+pipeline/venv/
+pipeline/.env
