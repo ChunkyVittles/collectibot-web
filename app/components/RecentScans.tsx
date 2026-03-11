@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type RecentScan = {
-  issue_id: number;
+  issue_id?: number;
+  pending_id?: number;
   issue_number: string;
   series_name: string;
-  series_id: number;
+  series_id?: number;
+  status: "matched" | "pending";
+  front_image_path?: string;
 };
 
 export default function RecentScans() {
@@ -57,47 +60,59 @@ export default function RecentScans() {
             paddingBottom: 4,
           }}
         >
-          {scans.map((s) => (
-            <Link
-              key={s.issue_id}
-              href={`/issue/${s.issue_id}`}
-              style={{ textDecoration: "none", flexShrink: 0 }}
-            >
-              <div
-                style={{
-                  width: 64,
-                  textAlign: "center",
-                }}
+          {scans.map((s) => {
+            const key = s.issue_id ? `i-${s.issue_id}` : `p-${s.pending_id}`;
+            const href = s.status === "matched"
+              ? `/issue/${s.issue_id}`
+              : `/admin`;
+            const imgSrc = s.status === "matched"
+              ? `/api/scans/image?issue=${s.issue_id}&side=front`
+              : `/api/scans/image?path=${encodeURIComponent(s.front_image_path || "")}`;
+
+            return (
+              <Link
+                key={key}
+                href={href}
+                style={{ textDecoration: "none", flexShrink: 0 }}
               >
-                <img
-                  src={`/api/scans/image?issue=${s.issue_id}&side=front`}
-                  alt={`${s.series_name} #${s.issue_number}`}
-                  style={{
-                    width: 64,
-                    height: 96,
-                    objectFit: "cover",
-                    borderRadius: 4,
-                    border: "1px solid #333",
-                  }}
-                />
                 <div
                   style={{
-                    fontSize: 10,
-                    color: "#aaa",
-                    marginTop: 4,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    width: 64,
+                    textAlign: "center",
                   }}
                 >
-                  {s.series_name}
+                  <img
+                    src={imgSrc}
+                    alt={`${s.series_name} #${s.issue_number}`}
+                    style={{
+                      width: 64,
+                      height: 96,
+                      objectFit: "cover",
+                      borderRadius: 4,
+                      border: s.status === "pending"
+                        ? "1px solid #664400"
+                        : "1px solid #333",
+                    }}
+                  />
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: s.status === "pending" ? "#996600" : "#aaa",
+                      marginTop: 4,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {s.series_name}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#666" }}>
+                    #{s.issue_number}
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: "#666" }}>
-                  #{s.issue_number}
-                </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

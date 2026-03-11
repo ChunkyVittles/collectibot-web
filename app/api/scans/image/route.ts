@@ -3,27 +3,32 @@ import pool from "@/app/lib/db";
 
 export async function GET(req: NextRequest) {
   const issueId = req.nextUrl.searchParams.get("issue");
+  const pathParam = req.nextUrl.searchParams.get("path");
   const side = req.nextUrl.searchParams.get("side") || "front";
 
-  if (!issueId) {
-    return NextResponse.json({ error: "Missing issue param" }, { status: 400 });
+  let key: string;
+
+  if (pathParam) {
+    // Direct R2 path (for pending scans)
+    key = pathParam;
+  } else if (issueId) {
+    const scanType = side === "back" ? "back_cover" : "front_cover";
+
+    const result = await pool.query(
+      `SELECT image_url FROM scans
+       WHERE issue_id = $1 AND scan_type = $2
+       ORDER BY uploaded_at DESC LIMIT 1`,
+      [issueId, scanType]
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: "No scan found" }, { status: 404 });
+    }
+
+    key = result.rows[0].image_url as string;
+  } else {
+    return NextResponse.json({ error: "Missing issue or path param" }, { status: 400 });
   }
-
-  const scanType = side === "back" ? "back_cover" : "front_cover";
-
-  const result = await pool.query(
-    `SELECT image_url FROM scans
-     WHERE issue_id = $1 AND scan_type = $2
-     ORDER BY uploaded_at DESC LIMIT 1`,
-    [issueId, scanType]
-  );
-
-  if (result.rows.length === 0) {
-    return NextResponse.json({ error: "No scan found" }, { status: 404 });
-  }
-
-  // image_url may be a full URL or a key path
-  let key = result.rows[0].image_url as string;
   // Strip full URL prefix if present
   const r2DevMatch = key.match(/r2\.dev\/(.+)$/);
   if (r2DevMatch) {

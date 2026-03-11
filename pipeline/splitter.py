@@ -305,8 +305,12 @@ def split_if_landscape(image_path: Path) -> list[Path]:
         img.close()
         return [image_path]
 
-    # Two comics — split in half
-    mid = width // 2
+    # Two comics — find the gap center and split there (not just width/2)
+    # The gap is where column density is lowest in the center zone
+    gap_region = col_density[center_start:center_end]
+    gap_center_offset = np.argmin(gap_region)
+    mid = center_start + gap_center_offset
+    log.info(f"  Split point: column {mid} (gap center)")
     stem = image_path.stem
     ext = image_path.suffix
 
