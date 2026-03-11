@@ -64,7 +64,7 @@ export default function RecentScans() {
             const key = s.issue_id ? `i-${s.issue_id}` : `p-${s.pending_id}`;
             const href = s.status === "matched"
               ? `/issue/${s.issue_id}`
-              : `/admin`;
+              : `/admin/scans`;
             const imgSrc = s.status === "matched"
               ? `/api/scans/image?issue=${s.issue_id}&side=front`
               : `/api/scans/image?path=${encodeURIComponent(s.front_image_path || "")}`;

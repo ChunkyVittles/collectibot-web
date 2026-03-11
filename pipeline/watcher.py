@@ -194,13 +194,30 @@ def _send_to_review(
     sidecar_path = REVIEW / f"{base}.json"
     sidecar_path.write_text(json.dumps(sidecar, indent=2))
 
+    # Upload to R2 under pending/ prefix so thumbnails work online
+    from uploader import get_r2_client, convert_to_webp
+    r2 = get_r2_client()
+    bucket = os.getenv("R2_BUCKET", "collectibot-scans")
+
+    front_webp = front_path.parent / f"{front_path.stem}.webp"
+    back_webp = back_path.parent / f"{back_path.stem}.webp"
+    convert_to_webp(front_path, front_webp)
+    convert_to_webp(back_path, back_webp)
+
+    r2_front_key = f"pending/{front_webp.name}"
+    r2_back_key = f"pending/{back_webp.name}"
+    r2.upload_file(str(front_webp), bucket, r2_front_key, ExtraArgs={"ContentType": "image/webp"})
+    r2.upload_file(str(back_webp), bucket, r2_back_key, ExtraArgs={"ContentType": "image/webp"})
+    front_webp.unlink()
+    back_webp.unlink()
+
     # Move images to review
     review_front = REVIEW / front_path.name
     review_back = REVIEW / back_path.name
     shutil.move(str(front_path), str(review_front))
     shutil.move(str(back_path), str(review_back))
 
-    # Insert into pending_scans
+    # Insert into pending_scans (store R2 keys, not local paths)
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -211,8 +228,8 @@ def _send_to_review(
                 confidence_score, reason_for_review)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
-                str(review_front),
-                str(review_back),
+                r2_front_key,
+                r2_back_key,
                 front_data.get("title"),
                 str(front_data.get("issue_number", "")) or None,
                 year,
