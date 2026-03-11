@@ -27,69 +27,67 @@ SCAN_DPI = 300           # Assumed scanner DPI
 def deskew(img: Image.Image) -> Image.Image:
     """
     Detect rotation angle of a comic on a white background and straighten it.
-    Uses numpy to find content pixel coordinates and compute the dominant angle
-    via a covariance/PCA approach on edge pixels.
+    Scans the left edge of the content to find the leftmost non-white pixel per row,
+    then fits a line to those points to determine the skew angle.
     """
     gray = np.array(ImageOps.grayscale(img))
+    h, w = gray.shape
 
-    # Find content pixels (non-white)
+    # Binary mask: True where content is
     content_mask = gray < CONTENT_THRESHOLD
 
-    # Get coordinates of content pixels
-    ys, xs = np.nonzero(content_mask)
+    # For each row, find the leftmost content pixel
+    left_edges = []
+    for row in range(h):
+        cols = np.nonzero(content_mask[row])[0]
+        if len(cols) > 0:
+            left_edges.append((row, cols[0]))
 
-    if len(xs) < 100:
+    if len(left_edges) < 20:
         return img
 
-    # Use edge pixels only for better angle detection —
-    # erode the mask and XOR to get edges
-    from PIL import ImageFilter
-    gray_img = ImageOps.grayscale(img)
-    # Threshold to binary
-    binary = gray_img.point(lambda p: 255 if p < CONTENT_THRESHOLD else 0)
-    # Erode to find interior
-    eroded = binary.filter(ImageFilter.MinFilter(5))
-    # Edge = content minus eroded interior
-    edge_arr = np.array(binary).astype(np.int16) - np.array(eroded).astype(np.int16)
-    edge_mask = edge_arr > 128
+    rows = np.array([p[0] for p in left_edges], dtype=np.float64)
+    cols = np.array([p[1] for p in left_edges], dtype=np.float64)
 
-    edge_ys, edge_xs = np.nonzero(edge_mask)
+    # The left edge has noise from artwork — use RANSAC-like approach:
+    # Sample many pairs, compute angles, take the median
+    n = len(rows)
+    if n > 200:
+        # Sample evenly spaced points for speed
+        indices = np.linspace(0, n - 1, 200, dtype=int)
+        rows = rows[indices]
+        cols = cols[indices]
+        n = 200
 
-    if len(edge_xs) < 50:
+    # Fit line: col = slope * row + intercept
+    # slope tells us the angle — if the left edge is perfectly vertical, slope = 0
+    # Use a robust approach: split into top quarter and bottom quarter,
+    # take the median x in each, compute angle from those two points
+    quarter = max(1, n // 4)
+    top_x = np.median(cols[:quarter])
+    bottom_x = np.median(cols[-quarter:])
+    top_y = np.median(rows[:quarter])
+    bottom_y = np.median(rows[-quarter:])
+
+    dy = bottom_y - top_y
+    dx = bottom_x - top_x
+
+    if abs(dy) < 1:
         return img
 
-    # Compute covariance matrix of edge pixel positions
-    coords = np.column_stack([edge_xs - edge_xs.mean(), edge_ys - edge_ys.mean()])
-    cov = np.cov(coords.T)
-
-    # Eigenvalues/vectors — the principal axis gives orientation
-    eigenvalues, eigenvectors = np.linalg.eigh(cov)
-
-    # The eigenvector with the largest eigenvalue is the principal axis
-    principal = eigenvectors[:, np.argmax(eigenvalues)]
-
-    # Angle of principal axis relative to horizontal
-    angle_rad = np.arctan2(principal[1], principal[0])
+    # Angle of the left edge from vertical
+    # A vertical edge has dx=0. Positive dx means tilted clockwise.
+    angle_rad = np.arctan2(dx, dy)
     angle_deg = np.degrees(angle_rad)
 
-    # We want the correction angle — how far from perfectly vertical/horizontal
-    # Comics are portrait rectangles, so the principal axis should be near vertical (90°)
-    # Normalize to a small correction from 0
-    if angle_deg > 45:
-        correction = angle_deg - 90
-    elif angle_deg < -45:
-        correction = angle_deg + 90
-    else:
-        correction = angle_deg
-
     # Only deskew if meaningful but not extreme
-    if abs(correction) < 0.3 or abs(correction) > 15:
+    if abs(angle_deg) < 0.3 or abs(angle_deg) > 15:
         return img
 
-    log.info(f"  Deskew: rotating {correction:.1f}°")
+    log.info(f"  Deskew: rotating {angle_deg:.1f}° (left edge)")
 
     rotated = img.rotate(
-        -correction,  # Negative because rotate() is counter-clockwise
+        angle_deg,
         expand=True,
         fillcolor=(255, 255, 255),
         resample=Image.BICUBIC,
