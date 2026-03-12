@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import DeleteScansButton from "@/app/components/DeleteScansButton";
 import ReassignScansButton from "@/app/components/ReassignScansButton";
 import SetHeroButton from "@/app/components/SetHeroButton";
+import ImageLightbox from "@/app/components/ImageLightbox";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -68,7 +69,7 @@ export default async function IssuePage({ params }: Props) {
             {hasFront && (
               <div style={{ flex: 1, textAlign: "center" }}>
                 <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Front Cover</div>
-                <img
+                <ImageLightbox
                   src={`/api/scans/image?issue=${issue.id}&side=front&t=${cacheBust}`}
                   alt={`${issue.series_name} #${issue.number} front cover`}
                   style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
@@ -78,7 +79,7 @@ export default async function IssuePage({ params }: Props) {
             {hasBack && (
               <div style={{ flex: 1, textAlign: "center" }}>
                 <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Back Cover</div>
-                <img
+                <ImageLightbox
                   src={`/api/scans/image?issue=${issue.id}&side=back&t=${cacheBust}`}
                   alt={`${issue.series_name} #${issue.number} back cover`}
                   style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
