@@ -2,6 +2,7 @@ import pool from "@/app/lib/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import DeleteScansButton from "@/app/components/DeleteScansButton";
+import ReassignScansButton from "@/app/components/ReassignScansButton";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -73,7 +74,10 @@ export default async function IssuePage({ params }: Props) {
               </div>
             )}
           </div>
-          <DeleteScansButton issueId={issue.id} />
+          <div style={{ display: "flex", alignItems: "center", marginTop: 16 }}>
+            <DeleteScansButton issueId={issue.id} />
+            <ReassignScansButton issueId={issue.id} />
+          </div>
         </>
       )}
 
