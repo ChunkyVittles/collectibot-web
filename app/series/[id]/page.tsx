@@ -47,7 +47,14 @@ export default async function SeriesPage({ params }: Props) {
     }
   }
 
+  const heroRes = await pool.query(
+    `SELECT hero_issue_id FROM series_settings WHERE series_id = $1`,
+    [id]
+  );
+  const heroIssueId = heroRes.rows.length > 0 ? String(heroRes.rows[0].hero_issue_id) : null;
+
   const issues = issuesRes.rows;
+  const cacheBust = Date.now();
   const years = series.year_ended
     ? `${series.year_began}–${series.year_ended}`
     : `${series.year_began}–present`;
@@ -65,6 +72,25 @@ export default async function SeriesPage({ params }: Props) {
         {series.format && <> &middot; {series.format}</>}
       </p>
 
+      {heroIssueId && scannedIssues.has(heroIssueId) && (() => {
+        const heroIssue = issues.find((i) => String(i.id) === heroIssueId);
+        return heroIssue ? (
+          <Link href={`/issue/${heroIssue.id}`} style={{ textDecoration: "none" }}>
+            <div style={{ marginTop: 24, textAlign: "center", maxWidth: 200 }}>
+              <img
+                src={`/api/scans/image?issue=${heroIssue.id}&side=front&t=${cacheBust}`}
+                alt={`${series.name} #${heroIssue.number}`}
+                style={{
+                  width: "100%",
+                  borderRadius: 6,
+                  border: "1px solid #333",
+                }}
+              />
+            </div>
+          </Link>
+        ) : null;
+      })()}
+
       <h2 style={{ marginTop: 32, marginBottom: 12 }}>
         Issues ({issues.length})
       </h2>
@@ -78,7 +104,7 @@ export default async function SeriesPage({ params }: Props) {
           >
             <div style={{ textAlign: "center" }}>
               <img
-                src={`/api/scans/image?issue=${issue.id}&side=front`}
+                src={`/api/scans/image?issue=${issue.id}&side=front&t=${cacheBust}`}
                 alt={`${series.name} #${issue.number}`}
                 style={{
                   width: "100%",
@@ -120,7 +146,7 @@ export default async function SeriesPage({ params }: Props) {
                 <Link href={`/issue/${issue.id}`} style={{ display: "block", textDecoration: "none" }}>
                   {scannedIssues.has(String(issue.id)) ? (
                     <img
-                      src={`/api/scans/image?issue=${issue.id}&side=front`}
+                      src={`/api/scans/image?issue=${issue.id}&side=front&t=${cacheBust}`}
                       alt=""
                       style={{ width: 32, height: 48, objectFit: "cover", borderRadius: 2, verticalAlign: "middle" }}
                     />

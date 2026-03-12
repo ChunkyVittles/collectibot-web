@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import DeleteScansButton from "@/app/components/DeleteScansButton";
 import ReassignScansButton from "@/app/components/ReassignScansButton";
+import SetHeroButton from "@/app/components/SetHeroButton";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -39,6 +40,12 @@ export default async function IssuePage({ params }: Props) {
   const cookieStore = await cookies();
   const isAdmin = !!cookieStore.get("cb_auth");
   const cacheBust = Date.now();
+
+  const heroRes = await pool.query(
+    `SELECT hero_issue_id FROM series_settings WHERE series_id = $1`,
+    [issue.series_id]
+  );
+  const isHero = heroRes.rows.length > 0 && heroRes.rows[0].hero_issue_id === issue.id;
 
   return (
     <div style={{ maxWidth: 700, margin: "40px auto", padding: "0 20px", fontFamily: "system-ui" }}>
@@ -87,6 +94,11 @@ export default async function IssuePage({ params }: Props) {
                 currentSeries={issue.series_name}
                 currentIssueNumber={issue.number}
                 currentSeriesId={issue.series_id}
+              />
+              <SetHeroButton
+                seriesId={issue.series_id}
+                issueId={issue.id}
+                isHero={isHero}
               />
             </div>
           )}

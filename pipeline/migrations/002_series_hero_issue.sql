@@ -1,0 +1,1 @@
+ALTER TABLE series ADD COLUMN IF NOT EXISTS hero_issue_id BIGINT REFERENCES issues(id);
