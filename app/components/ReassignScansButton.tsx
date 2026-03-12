@@ -3,22 +3,65 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function ReassignScansButton({ issueId }: { issueId: number }) {
+export default function ReassignScansButton({
+  issueId,
+  currentSeries,
+  currentIssueNumber,
+  currentSeriesId,
+}: {
+  issueId: number;
+  currentSeries: string;
+  currentIssueNumber: string;
+  currentSeriesId: number;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"issue" | "series">("issue");
+
+  // Issue number change (same series)
+  const [newIssueNumber, setNewIssueNumber] = useState(currentIssueNumber);
+  const [issueResults, setIssueResults] = useState<any[]>([]);
+
+  // Series change
   const [seriesQuery, setSeriesQuery] = useState("");
   const [seriesResults, setSeriesResults] = useState<any[]>([]);
   const [selectedSeries, setSelectedSeries] = useState<any>(null);
   const [issues, setIssues] = useState<any[]>([]);
   const [selectedIssue, setSelectedIssue] = useState<number | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Search for issue number in current series
+  const searchIssueInSeries = async (seriesId: number, num: string) => {
+    const res = await fetch(`/api/admin/scans/issues?seriesId=${seriesId}`);
+    const data = await res.json();
+    const allIssues = data.issues || [];
+    // Filter to matching issue numbers
+    const matches = allIssues.filter((i: any) =>
+      i.number === num || i.number === num.replace(/^#/, "")
+    );
+    return { matches, allIssues };
+  };
+
+  const handleIssueNumberChange = async () => {
+    setLoading(true);
+    setError("");
+    const { matches } = await searchIssueInSeries(currentSeriesId, newIssueNumber);
+    if (matches.length === 0) {
+      setError(`No issue #${newIssueNumber} found in ${currentSeries}`);
+      setLoading(false);
+      return;
+    }
+    const targetId = matches[0].id;
+    await doReassign(targetId);
+  };
 
   const searchSeries = async () => {
     if (!seriesQuery.trim()) return;
     const res = await fetch(`/api/admin/scans/search-series?q=${encodeURIComponent(seriesQuery)}`);
     const data = await res.json();
-    setSeriesResults(data.series || data.results || []);
+    setSeriesResults(data.results || []);
     setSelectedSeries(null);
     setIssues([]);
     setSelectedIssue(null);
@@ -29,22 +72,21 @@ export default function ReassignScansButton({ issueId }: { issueId: number }) {
     setSeriesResults([]);
     const res = await fetch(`/api/admin/scans/issues?seriesId=${series.id}`);
     const data = await res.json();
-    setIssues(data.issues || data || []);
+    setIssues(data.issues || []);
   };
 
-  const reassign = async () => {
-    if (!selectedIssue) return;
+  const doReassign = async (toIssueId: number) => {
     setLoading(true);
     setError("");
     try {
       const res = await fetch("/api/scans/reassign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromIssueId: issueId, toIssueId: selectedIssue }),
+        body: JSON.stringify({ fromIssueId: issueId, toIssueId }),
       });
       const data = await res.json();
       if (data.ok) {
-        router.push(`/issue/${selectedIssue}`);
+        router.push(`/issue/${toIssueId}`);
       } else {
         setError(data.error || "Failed to reassign");
       }
@@ -68,7 +110,7 @@ export default function ReassignScansButton({ issueId }: { issueId: number }) {
           marginLeft: 8,
         }}
       >
-        Reassign Scans
+        Edit
       </button>
     );
   }
@@ -81,137 +123,219 @@ export default function ReassignScansButton({ issueId }: { issueId: number }) {
         border: "1px solid #333",
         borderRadius: 6,
         background: "#111",
+        width: "100%",
       }}
     >
-      <div style={{ fontSize: 14, color: "#aaa", marginBottom: 12 }}>
-        Move scans to a different issue:
+      {/* Tab buttons */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          onClick={() => setMode("issue")}
+          style={{
+            padding: "6px 12px",
+            background: mode === "issue" ? "#2563eb" : "#222",
+            border: "none",
+            borderRadius: 4,
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          Change Issue #
+        </button>
+        <button
+          onClick={() => setMode("series")}
+          style={{
+            padding: "6px 12px",
+            background: mode === "series" ? "#2563eb" : "#222",
+            border: "none",
+            borderRadius: 4,
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          Change Series
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          style={{
+            padding: "6px 12px",
+            background: "none",
+            border: "1px solid #444",
+            borderRadius: 4,
+            color: "#666",
+            cursor: "pointer",
+            fontSize: 13,
+            marginLeft: "auto",
+          }}
+        >
+          Cancel
+        </button>
       </div>
 
-      {!selectedSeries ? (
-        <>
+      {mode === "issue" && (
+        <div>
+          <div style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>
+            Current: {currentSeries} #{currentIssueNumber}
+          </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input
-              value={seriesQuery}
-              onChange={(e) => setSeriesQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && searchSeries()}
-              placeholder="Search series name..."
+              value={newIssueNumber}
+              onChange={(e) => setNewIssueNumber(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleIssueNumberChange()}
+              placeholder="New issue number..."
               style={{
-                flex: 1,
+                width: 120,
                 padding: 8,
                 background: "#222",
                 border: "1px solid #444",
                 borderRadius: 4,
                 color: "#fff",
+                fontSize: 16,
               }}
             />
             <button
-              onClick={searchSeries}
+              onClick={handleIssueNumberChange}
+              disabled={loading || newIssueNumber === currentIssueNumber}
               style={{
                 padding: "8px 16px",
-                background: "#333",
+                background: newIssueNumber !== currentIssueNumber ? "#2563eb" : "#333",
                 border: "none",
                 borderRadius: 4,
                 color: "#fff",
-                cursor: "pointer",
+                cursor: newIssueNumber !== currentIssueNumber ? "pointer" : "default",
               }}
             >
-              Search
+              {loading ? "Moving..." : "Move to this issue"}
             </button>
           </div>
-          {seriesResults.length > 0 && (
-            <div style={{ marginTop: 8, maxHeight: 200, overflow: "auto" }}>
-              {seriesResults.map((s: any) => (
-                <div
-                  key={s.id}
-                  onClick={() => pickSeries(s)}
-                  style={{
-                    padding: "6px 8px",
-                    cursor: "pointer",
-                    borderBottom: "1px solid #222",
-                    color: "#ccc",
-                    fontSize: 13,
-                  }}
-                >
-                  {s.name} ({s.year_began || "?"})
-                  {s.publisher && (
-                    <span style={{ color: "#666" }}> — {s.publisher}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div style={{ color: "#ccc", fontSize: 13, marginBottom: 8 }}>
-            {selectedSeries.name} ({selectedSeries.year_began || "?"})
-            <button
-              onClick={() => { setSelectedSeries(null); setIssues([]); setSelectedIssue(null); }}
-              style={{
-                marginLeft: 8,
-                background: "none",
-                border: "none",
-                color: "#666",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              change
-            </button>
-          </div>
-          <select
-            value={selectedIssue || ""}
-            onChange={(e) => setSelectedIssue(Number(e.target.value))}
-            style={{
-              width: "100%",
-              padding: 8,
-              background: "#222",
-              border: "1px solid #444",
-              borderRadius: 4,
-              color: "#fff",
-            }}
-          >
-            <option value="">Select issue...</option>
-            {issues.map((i: any) => (
-              <option key={i.id} value={i.id}>
-                #{i.number} {i.publication_date ? `(${i.publication_date})` : ""}
-              </option>
-            ))}
-          </select>
-
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button
-              onClick={reassign}
-              disabled={!selectedIssue || loading}
-              style={{
-                padding: "8px 16px",
-                background: selectedIssue ? "#2563eb" : "#333",
-                border: "none",
-                borderRadius: 4,
-                color: "#fff",
-                cursor: selectedIssue ? "pointer" : "default",
-              }}
-            >
-              {loading ? "Moving..." : "Move Scans Here"}
-            </button>
-            <button
-              onClick={() => setOpen(false)}
-              style={{
-                padding: "8px 16px",
-                background: "none",
-                border: "1px solid #444",
-                borderRadius: 4,
-                color: "#888",
-                cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </>
+        </div>
       )}
 
-      {error && <div style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>{error}</div>}
+      {mode === "series" && (
+        <div>
+          {!selectedSeries ? (
+            <>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={seriesQuery}
+                  onChange={(e) => setSeriesQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && searchSeries()}
+                  placeholder="Search series name..."
+                  style={{
+                    flex: 1,
+                    padding: 8,
+                    background: "#222",
+                    border: "1px solid #444",
+                    borderRadius: 4,
+                    color: "#fff",
+                  }}
+                />
+                <button
+                  onClick={searchSeries}
+                  style={{
+                    padding: "8px 16px",
+                    background: "#333",
+                    border: "none",
+                    borderRadius: 4,
+                    color: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  Search
+                </button>
+              </div>
+              {seriesResults.length > 0 && (
+                <div style={{ marginTop: 8, maxHeight: 200, overflow: "auto" }}>
+                  {seriesResults.map((s: any) => (
+                    <div
+                      key={s.id}
+                      onClick={() => pickSeries(s)}
+                      style={{
+                        padding: "6px 8px",
+                        cursor: "pointer",
+                        borderBottom: "1px solid #222",
+                        color: "#ccc",
+                        fontSize: 13,
+                      }}
+                    >
+                      {s.name} ({s.year_began || "?"})
+                      {s.publisher && (
+                        <span style={{ color: "#666" }}> — {s.publisher}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ color: "#ccc", fontSize: 13, marginBottom: 8 }}>
+                {selectedSeries.name} ({selectedSeries.year_began || "?"})
+                <button
+                  onClick={() => {
+                    setSelectedSeries(null);
+                    setIssues([]);
+                    setSelectedIssue(null);
+                  }}
+                  style={{
+                    marginLeft: 8,
+                    background: "none",
+                    border: "none",
+                    color: "#666",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  change
+                </button>
+              </div>
+              <select
+                value={selectedIssue || ""}
+                onChange={(e) => setSelectedIssue(Number(e.target.value))}
+                style={{
+                  width: "100%",
+                  padding: 8,
+                  background: "#222",
+                  border: "1px solid #444",
+                  borderRadius: 4,
+                  color: "#fff",
+                }}
+              >
+                <option value="">Select issue...</option>
+                {issues.map((i: any) => (
+                  <option key={i.id} value={i.id}>
+                    #{i.number}{" "}
+                    {i.publication_date ? `(${i.publication_date})` : ""}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={() => selectedIssue && doReassign(selectedIssue)}
+                disabled={!selectedIssue || loading}
+                style={{
+                  marginTop: 12,
+                  padding: "8px 16px",
+                  background: selectedIssue ? "#2563eb" : "#333",
+                  border: "none",
+                  borderRadius: 4,
+                  color: "#fff",
+                  cursor: selectedIssue ? "pointer" : "default",
+                }}
+              >
+                {loading ? "Moving..." : "Move Scans Here"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }

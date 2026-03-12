@@ -74,9 +74,14 @@ export default async function IssuePage({ params }: Props) {
               </div>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", marginTop: 16 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", marginTop: 16 }}>
             <DeleteScansButton issueId={issue.id} />
-            <ReassignScansButton issueId={issue.id} />
+            <ReassignScansButton
+              issueId={issue.id}
+              currentSeries={issue.series_name}
+              currentIssueNumber={issue.number}
+              currentSeriesId={issue.series_id}
+            />
           </div>
         </>
       )}
