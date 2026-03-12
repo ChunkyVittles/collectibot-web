@@ -86,7 +86,7 @@ export default function ReassignScansButton({
       });
       const data = await res.json();
       if (data.ok) {
-        router.push(`/issue/${toIssueId}`);
+        window.location.href = `/issue/${toIssueId}`;
       } else {
         setError(data.error || "Failed to reassign");
       }

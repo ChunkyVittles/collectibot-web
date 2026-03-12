@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       const ext = extname(path).toLowerCase();
       const mime = MIME[ext] || "image/webp";
       return new NextResponse(data, {
-        headers: { "Content-Type": mime, "Cache-Control": "public, max-age=86400" },
+        headers: { "Content-Type": mime, "Cache-Control": "public, max-age=300" },
       });
     } catch {
       return NextResponse.json({ error: "R2 fetch error" }, { status: 500 });

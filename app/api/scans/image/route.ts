@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse(data, {
       headers: {
         "Content-Type": "image/webp",
-        "Cache-Control": "public, max-age=86400",
+        "Cache-Control": "public, max-age=300",
       },
     });
   } catch {

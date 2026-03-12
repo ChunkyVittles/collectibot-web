@@ -97,7 +97,11 @@ export default async function SeriesPage({ params }: Props) {
         ))}
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+      <style>{`
+        .issue-table tr:hover { background: #f5f5f5; }
+        @media (prefers-color-scheme: dark) { .issue-table tr:hover { background: #1a1a1a; } }
+      `}</style>
+      <table className="issue-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead>
           <tr style={{ borderBottom: "2px solid #333", textAlign: "left" }}>
             <th style={{ padding: "8px 8px 8px 0", width: 40 }}></th>
@@ -108,31 +112,42 @@ export default async function SeriesPage({ params }: Props) {
         </thead>
         <tbody>
           {issues.map((issue) => (
-            <tr key={issue.id} style={{ borderBottom: "1px solid #eee" }}>
+            <tr
+              key={issue.id}
+              style={{ borderBottom: "1px solid #eee" }}
+            >
               <td style={{ padding: "4px 8px 4px 0" }}>
-                {scannedIssues.has(String(issue.id)) ? (
-                  <img
-                    src={`/api/scans/image?issue=${issue.id}&side=front`}
-                    alt=""
-                    style={{ width: 32, height: 48, objectFit: "cover", borderRadius: 2, verticalAlign: "middle" }}
-                  />
-                ) : (
-                  <div style={{ width: 32, height: 48, background: "#1a1a1a", borderRadius: 2, border: "1px solid #333" }} />
-                )}
+                <Link href={`/issue/${issue.id}`} style={{ display: "block", textDecoration: "none" }}>
+                  {scannedIssues.has(String(issue.id)) ? (
+                    <img
+                      src={`/api/scans/image?issue=${issue.id}&side=front`}
+                      alt=""
+                      style={{ width: 32, height: 48, objectFit: "cover", borderRadius: 2, verticalAlign: "middle" }}
+                    />
+                  ) : (
+                    <div style={{ width: 32, height: 48, background: "#1a1a1a", borderRadius: 2, border: "1px solid #333" }} />
+                  )}
+                </Link>
               </td>
               <td style={{ padding: "6px 8px 6px 0", fontWeight: 600 }}>
-                {issue.number}
-                {issue.variant_name && (
-                  <span style={{ fontWeight: 400, color: "#999", fontSize: 12 }}>
-                    {" "}({issue.variant_name})
-                  </span>
-                )}
+                <Link href={`/issue/${issue.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                  {issue.number}
+                  {issue.variant_name && (
+                    <span style={{ fontWeight: 400, color: "#999", fontSize: 12 }}>
+                      {" "}({issue.variant_name})
+                    </span>
+                  )}
+                </Link>
               </td>
               <td style={{ padding: 6, color: "#666", whiteSpace: "nowrap" }}>
-                {issue.publication_date || issue.key_date || "—"}
+                <Link href={`/issue/${issue.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                  {issue.publication_date || issue.key_date || "—"}
+                </Link>
               </td>
               <td style={{ padding: 6, color: "#666" }}>
-                {issue.price || "—"}
+                <Link href={`/issue/${issue.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+                  {issue.price || "—"}
+                </Link>
               </td>
             </tr>
           ))}
