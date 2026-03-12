@@ -138,9 +138,10 @@ function ScanCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pending_id: scan.id }),
       });
+      const httpStatus = res.status;
       const data = await res.json();
-      if (data.ok) {
-        setStatus("Rejected");
+      if (data.ok || httpStatus === 404) {
+        setStatus(data.ok ? "Rejected" : "Already removed");
         setTimeout(onDone, 500);
       } else {
         setStatus(`Error: ${data.error}`);
