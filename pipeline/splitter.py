@@ -27,7 +27,7 @@ CENTER_GAP_THRESHOLD = 0.30   # >30% of center columns must be empty to detect t
 
 
 SCANNER_STRIP_PX = 50  # Pixels to chop off top of every scan (damaged scanner housing)
-SCANNER_RIGHT_STRIP_PCT = 0.10  # Fraction of width to chop off right side (scanner edge artifact)
+SCANNER_RIGHT_STRIP_PCT = 0.03  # Fraction of width to chop off right side (scanner edge artifact)
 
 
 def strip_scanner_artifact(img: Image.Image) -> Image.Image:
