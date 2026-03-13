@@ -44,11 +44,12 @@ function ScanCard({
   const [year, setYear] = useState(scan.extracted_year?.toString() || "");
   const [publisher, setPublisher] = useState(scan.extracted_publisher || "");
 
-  const [seriesQuery, setSeriesQuery] = useState("");
+  const [seriesQuery, setSeriesQuery] = useState(scan.extracted_title || "");
   const [seriesResults, setSeriesResults] = useState<SeriesResult[]>([]);
   const [selectedSeries, setSelectedSeries] = useState<SeriesResult | null>(null);
   const [issues, setIssues] = useState<IssueResult[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<number | null>(null);
+  const [autoSearched, setAutoSearched] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
@@ -63,10 +64,20 @@ function ScanCard({
     setSeriesResults(data.results || []);
   }, []);
 
+  // Auto-search with extracted title on mount
   useEffect(() => {
-    const timer = setTimeout(() => searchSeries(seriesQuery), 300);
-    return () => clearTimeout(timer);
-  }, [seriesQuery, searchSeries]);
+    if (!autoSearched && scan.extracted_title) {
+      setAutoSearched(true);
+      searchSeries(scan.extracted_title);
+    }
+  }, [autoSearched, scan.extracted_title, searchSeries]);
+
+  useEffect(() => {
+    if (autoSearched) {
+      const timer = setTimeout(() => searchSeries(seriesQuery), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [seriesQuery, searchSeries, autoSearched]);
 
   const selectSeries = async (series: SeriesResult) => {
     setSelectedSeries(series);
@@ -385,7 +396,13 @@ function ScanCard({
             fontSize: 14,
           }}
         >
-          Approve & Publish
+          {!selectedSeries
+            ? "Select a series first"
+            : !selectedIssueId
+              ? "Select an issue"
+              : loading
+                ? "Publishing..."
+                : "Approve & Publish"}
         </button>
         <button
           onClick={handleReject}
