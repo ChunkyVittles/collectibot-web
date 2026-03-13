@@ -310,14 +310,6 @@ function ScanCard({
           />
         </label>
         <label style={{ color: "#aaa", fontSize: 13 }}>
-          Year
-          <input
-            value={year}
-            onChange={(e) => setYear(e.target.value)}
-            style={inputStyle}
-          />
-        </label>
-        <label style={{ color: "#aaa", fontSize: 13 }}>
           Publisher
           <input
             value={publisher}
