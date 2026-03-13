@@ -27,14 +27,16 @@ CENTER_GAP_THRESHOLD = 0.30   # >30% of center columns must be empty to detect t
 
 
 SCANNER_STRIP_PX = 50  # Pixels to chop off top of every scan (damaged scanner housing)
+SCANNER_RIGHT_STRIP_PCT = 0.10  # Fraction of width to chop off right side (scanner edge artifact)
 
 
 def strip_scanner_artifact(img: Image.Image) -> Image.Image:
-    """Remove top 50 pixels from scan to eliminate damaged scanner housing artifact."""
+    """Remove top 50px and right 10% from scan to eliminate scanner artifacts."""
     w, h = img.size
-    if h > SCANNER_STRIP_PX:
-        return img.crop((0, SCANNER_STRIP_PX, w, h))
-    return img
+    top = SCANNER_STRIP_PX if h > SCANNER_STRIP_PX else 0
+    right_strip = int(w * SCANNER_RIGHT_STRIP_PCT)
+    right = w - right_strip if right_strip > 0 else w
+    return img.crop((0, top, right, h))
 
 
 def _find_edge_angle(gray, edge="top"):
@@ -351,15 +353,14 @@ def split_if_landscape(image_path: Path) -> list[Path]:
 
 
 def strip_all_in_directory(directory: Path):
-    """Strip top 50px from every image file in directory, overwriting in place."""
+    """Strip top 50px and right 10% from every image file in directory, overwriting in place."""
     for f in sorted(directory.iterdir()):
         if f.suffix.lower() in IMAGE_EXTS:
             img = Image.open(f)
-            w, h = img.size
-            if h > SCANNER_STRIP_PX:
-                cropped = img.crop((0, SCANNER_STRIP_PX, w, h))
+            cropped = strip_scanner_artifact(img)
+            if cropped.size != img.size:
                 cropped.save(f, quality=95)
-                log.info(f"Stripped top {SCANNER_STRIP_PX}px from {f.name}")
+                log.info(f"Stripped scanner artifacts from {f.name}")
                 cropped.close()
             img.close()
 
