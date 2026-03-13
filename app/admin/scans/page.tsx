@@ -23,6 +23,7 @@ interface SeriesResult {
   year_ended: number | null;
   publisher: string | null;
   issue_count: number;
+  variants?: string[] | null;
 }
 
 interface IssueResult {
@@ -62,10 +63,13 @@ function ScanCard({
       setSeriesResults([]);
       return;
     }
-    const res = await fetch(`/api/admin/scans/search-series?q=${encodeURIComponent(q)}`);
+    const params = new URLSearchParams({ q });
+    if (issueNumber) params.set("issue", issueNumber);
+    if (year) params.set("year", year);
+    const res = await fetch(`/api/admin/scans/search-series?${params}`);
     const data = await res.json();
     setSeriesResults(data.results || []);
-  }, []);
+  }, [issueNumber, year]);
 
   // Auto-match on mount: search series, pick best match, select issue
   useEffect(() => {
@@ -74,7 +78,10 @@ function ScanCard({
     setAutoSearched(true);
 
     (async () => {
-      const res = await fetch(`/api/admin/scans/search-series?q=${encodeURIComponent(scan.extracted_title || "")}`);
+      const params = new URLSearchParams({ q: scan.extracted_title || "" });
+      if (issueNumber) params.set("issue", issueNumber);
+      if (year) params.set("year", year);
+      const res = await fetch(`/api/admin/scans/search-series?${params}`);
       const data = await res.json();
       const results: SeriesResult[] = data.results || [];
       if (results.length === 0) {
@@ -380,6 +387,11 @@ function ScanCard({
                 <span style={{ color: "#555", marginLeft: 8 }}>
                   {s.issue_count} issues
                 </span>
+                {s.variants && s.variants.length > 0 && (
+                  <span style={{ color: "#f59e0b", marginLeft: 8, fontSize: 11 }}>
+                    {s.variants.join(", ")}
+                  </span>
+                )}
               </div>
             ))}
           </div>
