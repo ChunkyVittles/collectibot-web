@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   }
 
   const result = await pool.query(
-    `SELECT id, number, publication_date, key_date
+    `SELECT id, number, publication_date, key_date, variant_name
      FROM issues
      WHERE series_id = $1
      ORDER BY

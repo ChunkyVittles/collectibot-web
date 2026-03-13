@@ -30,6 +30,7 @@ interface IssueResult {
   number: string;
   publication_date: string | null;
   key_date: string | null;
+  variant_name: string | null;
 }
 
 function ScanCard({
@@ -463,6 +464,9 @@ function ScanCard({
                     }
                   >
                     <strong>#{issue.number}</strong>
+                    {issue.variant_name && (
+                      <span style={{ color: "#f59e0b", marginLeft: 8 }}>{issue.variant_name}</span>
+                    )}
                     {issue.publication_date
                       ? <span style={{ color: "#888", marginLeft: 8 }}>{issue.publication_date}</span>
                       : issue.key_date
