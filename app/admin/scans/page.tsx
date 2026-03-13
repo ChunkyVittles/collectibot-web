@@ -176,10 +176,10 @@ function ScanCard({
       const data = await res.json();
       if (data.ok) {
         setStatus("Approved!");
-        setTimeout(onDone, 500);
+        setTimeout(onDone, 1500);
       } else if (httpStatus === 404) {
         setStatus("Already processed — removing");
-        setTimeout(onDone, 500);
+        setTimeout(onDone, 1000);
       } else {
         setStatus(`Error: ${data.error}`);
       }
@@ -405,7 +405,7 @@ function ScanCard({
       {selectedSeries && issues.length > 0 && (
         <div style={{ marginBottom: 16, position: "relative" }}>
           <label style={{ color: "#aaa", fontSize: 13 }}>
-            Issue Number
+            Variant
             <input
               value={issueSearch}
               onChange={(e) => {
@@ -478,19 +478,28 @@ function ScanCard({
             );
           })()}
 
-          {selectedIssueId && !issueDropdownOpen && (
-            <div
-              style={{
-                marginTop: 8,
-                padding: "8px 12px",
-                background: "#1e3a1e",
-                borderRadius: 4,
-                fontSize: 13,
-              }}
-            >
-              Selected: <strong>#{issueSearch}</strong>
-            </div>
-          )}
+          {selectedIssueId && !issueDropdownOpen && (() => {
+            const sel = issues.find((i) => i.id === selectedIssueId);
+            return (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "8px 12px",
+                  background: "#1e3a1e",
+                  borderRadius: 4,
+                  fontSize: 13,
+                }}
+              >
+                Selected: <strong>#{issueSearch}</strong>
+                {sel?.variant_name && (
+                  <span style={{ color: "#f59e0b", marginLeft: 8 }}>{sel.variant_name}</span>
+                )}
+                {sel?.publication_date && (
+                  <span style={{ color: "#888", marginLeft: 8 }}>{sel.publication_date}</span>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
