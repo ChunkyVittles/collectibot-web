@@ -161,9 +161,13 @@ function ScanCard({
           series_slug: slug,
         }),
       });
+      const httpStatus = res.status;
       const data = await res.json();
       if (data.ok) {
         setStatus("Approved!");
+        setTimeout(onDone, 500);
+      } else if (httpStatus === 404) {
+        setStatus("Already processed — removing");
         setTimeout(onDone, 500);
       } else {
         setStatus(`Error: ${data.error}`);
