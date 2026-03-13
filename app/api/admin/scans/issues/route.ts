@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
      ORDER BY
        CASE WHEN number ~ '^[0-9]+$' THEN CAST(number AS INTEGER) ELSE 999999 END,
        number ASC
-     LIMIT 500`,
+     LIMIT 2000`,
     [seriesId]
   );
 

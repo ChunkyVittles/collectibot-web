@@ -177,13 +177,21 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             score = 0
 
             # Title matching (with punctuation-stripped fallback)
+            # Compare against both normalized (The-stripped) and original title
             sn_stripped = strip_punctuation(series_name)
             norm_stripped = strip_punctuation(normalized)
-            if series_name.lower() == normalized.lower() or sn_stripped == norm_stripped:
+            orig_stripped = strip_punctuation(title)
+            if (series_name.lower() == normalized.lower()
+                    or sn_stripped == norm_stripped
+                    or sn_stripped == orig_stripped):
                 score += 50
-            elif normalized.lower() in series_name.lower() or norm_stripped in sn_stripped:
+            elif (normalized.lower() in series_name.lower()
+                    or norm_stripped in sn_stripped
+                    or orig_stripped in sn_stripped):
                 score += 30
-            elif series_name.lower() in normalized.lower() or sn_stripped in norm_stripped:
+            elif (series_name.lower() in normalized.lower()
+                    or sn_stripped in norm_stripped
+                    or sn_stripped in orig_stripped):
                 score += 40  # DB name is contained in extracted title
 
             # Issue number matched (already filtered by query)

@@ -49,6 +49,8 @@ function ScanCard({
   const [selectedSeries, setSelectedSeries] = useState<SeriesResult | null>(null);
   const [issues, setIssues] = useState<IssueResult[]>([]);
   const [selectedIssueId, setSelectedIssueId] = useState<number | null>(null);
+  const [issueSearch, setIssueSearch] = useState(scan.extracted_issue || "");
+  const [issueDropdownOpen, setIssueDropdownOpen] = useState(false);
   const [autoSearched, setAutoSearched] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -102,7 +104,11 @@ function ScanCard({
       // Auto-select matching issue number
       if (issueNumber) {
         const match = allIssues.find((i) => i.number === issueNumber);
-        if (match) setSelectedIssueId(match.id);
+        if (match) {
+          setSelectedIssueId(match.id);
+          setIssueSearch(match.number);
+          setIssueDropdownOpen(false);
+        }
       }
     })();
   }, [autoSearched, scan.extracted_title, scan.extracted_year, issueNumber]);
@@ -131,7 +137,11 @@ function ScanCard({
         const match = (data.issues || []).find(
           (i: IssueResult) => i.number === issueNumber
         );
-        if (match) setSelectedIssueId(match.id);
+        if (match) {
+          setSelectedIssueId(match.id);
+          setIssueSearch(match.number);
+          setIssueDropdownOpen(false);
+        }
       }
     } catch {
       setIssues([]);
@@ -390,32 +400,93 @@ function ScanCard({
         )}
       </div>
 
-      {/* Issue selector */}
+      {/* Issue selector — searchable input */}
       {selectedSeries && issues.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 16, position: "relative" }}>
           <label style={{ color: "#aaa", fontSize: 13 }}>
-            Select Issue
-            <select
-              value={selectedIssueId || ""}
-              onChange={(e) => setSelectedIssueId(Number(e.target.value))}
+            Issue Number
+            <input
+              value={issueSearch}
+              onChange={(e) => {
+                setIssueSearch(e.target.value);
+                setSelectedIssueId(null);
+                setIssueDropdownOpen(true);
+              }}
+              onFocus={() => setIssueDropdownOpen(true)}
+              placeholder="Type issue number..."
+              style={{ ...inputStyle, marginBottom: 0 }}
+            />
+          </label>
+
+          {issueDropdownOpen && (() => {
+            const filtered = issues.filter((i) =>
+              i.number.startsWith(issueSearch.trim()) ||
+              i.number === issueSearch.trim()
+            ).slice(0, 30);
+            if (filtered.length === 0) return null;
+            return (
+              <div
+                style={{
+                  position: "absolute",
+                  zIndex: 10,
+                  left: 0,
+                  right: 0,
+                  border: "1px solid #444",
+                  borderRadius: 4,
+                  maxHeight: 200,
+                  overflowY: "auto",
+                  marginTop: 4,
+                  background: "#222",
+                }}
+              >
+                {filtered.map((issue) => (
+                  <div
+                    key={issue.id}
+                    onClick={() => {
+                      setSelectedIssueId(issue.id);
+                      setIssueSearch(issue.number);
+                      setIssueDropdownOpen(false);
+                    }}
+                    style={{
+                      padding: "8px 12px",
+                      cursor: "pointer",
+                      borderBottom: "1px solid #333",
+                      fontSize: 13,
+                      background: issue.id === selectedIssueId ? "#1e3a1e" : "transparent",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = "#333")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background =
+                        issue.id === selectedIssueId ? "#1e3a1e" : "transparent")
+                    }
+                  >
+                    <strong>#{issue.number}</strong>
+                    {issue.publication_date
+                      ? <span style={{ color: "#888", marginLeft: 8 }}>{issue.publication_date}</span>
+                      : issue.key_date
+                        ? <span style={{ color: "#888", marginLeft: 8 }}>{issue.key_date}</span>
+                        : null}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {selectedIssueId && !issueDropdownOpen && (
+            <div
               style={{
-                ...inputStyle,
-                cursor: "pointer",
+                marginTop: 8,
+                padding: "8px 12px",
+                background: "#1e3a1e",
+                borderRadius: 4,
+                fontSize: 13,
               }}
             >
-              <option value="">-- Select issue --</option>
-              {issues.map((issue) => (
-                <option key={issue.id} value={issue.id}>
-                  #{issue.number}
-                  {issue.publication_date
-                    ? ` (${issue.publication_date})`
-                    : issue.key_date
-                      ? ` (${issue.key_date})`
-                      : ""}
-                </option>
-              ))}
-            </select>
-          </label>
+              Selected: <strong>#{issueSearch}</strong>
+            </div>
+          )}
         </div>
       )}
 
