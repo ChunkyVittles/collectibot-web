@@ -355,12 +355,18 @@ def wait_for_stable_files(directory: Path, interval: float = 1.0, required_stabl
     log.warning(f"Files in {directory} did not stabilize within {timeout}s — proceeding anyway")
 
 
+SCANNER_SETTLE_DELAY = 10  # Seconds to wait after files appear before processing
+
+
 class InboxHandler(FileSystemEventHandler):
     def on_created(self, event):
         if event.is_directory:
             return
         # Wait until all files stop being written to (scanner temp files)
         wait_for_stable_files(INBOX)
+        # Extra delay so user can click accept on scanner UI
+        log.info(f"Files stable — waiting {SCANNER_SETTLE_DELAY}s for scanner UI...")
+        time.sleep(SCANNER_SETTLE_DELAY)
         # Split any landscape images first
         split_all_in_directory(INBOX)
         # Process pairs one at a time, re-scanning after each
