@@ -5,16 +5,18 @@ export async function GET() {
   try {
     // Get matched scans
     const matched = await pool.query(
-      `SELECT s.issue_id, s.uploaded_at,
-              i.number AS issue_number,
-              sr.name AS series_name, sr.id AS series_id,
-              'matched' AS status
-       FROM scans s
-       JOIN issues i ON s.issue_id = i.id
-       JOIN series sr ON i.series_id = sr.id
-       WHERE s.scan_type = 'front_cover'
-       ORDER BY s.uploaded_at DESC
-       LIMIT 20`
+      `SELECT * FROM (
+         SELECT DISTINCT ON (s.issue_id)
+                s.issue_id, s.uploaded_at,
+                i.number AS issue_number,
+                sr.name AS series_name, sr.id AS series_id,
+                'matched' AS status
+         FROM scans s
+         JOIN issues i ON s.issue_id = i.id
+         JOIN series sr ON i.series_id = sr.id
+         WHERE s.scan_type = 'front_cover'
+         ORDER BY s.issue_id, s.uploaded_at DESC
+       ) t ORDER BY t.uploaded_at DESC LIMIT 20`
     );
 
     // Get pending/review scans
