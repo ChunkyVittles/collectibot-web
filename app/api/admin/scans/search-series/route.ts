@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
      ORDER BY
        CASE WHEN s.name ILIKE $2 THEN 0 ELSE 1 END,
        s.year_began ASC
-     LIMIT 20`,
+     LIMIT 200`,
     [`%${q}%`, `${q}%`]
   );
 
