@@ -37,9 +37,11 @@ interface IssueResult {
 function ScanCard({
   scan,
   onDone,
+  onRemove,
 }: {
   scan: PendingScan;
   onDone: () => void;
+  onRemove: (id: number) => void;
 }) {
   const [title, setTitle] = useState(scan.extracted_title || "");
   const [issueNumber, setIssueNumber] = useState(scan.extracted_issue || "");
@@ -183,10 +185,10 @@ function ScanCard({
       const data = await res.json();
       if (data.ok) {
         setStatus("Approved!");
-        setTimeout(onDone, 1500);
+        onRemove(scan.id);
       } else if (httpStatus === 404) {
-        setStatus("Already processed — removing");
-        setTimeout(onDone, 1000);
+        setStatus("Already processed");
+        onRemove(scan.id);
       } else {
         setStatus(`Error: ${data.error}`);
       }
@@ -209,8 +211,7 @@ function ScanCard({
       const httpStatus = res.status;
       const data = await res.json();
       if (data.ok || httpStatus === 404) {
-        setStatus(data.ok ? "Rejected" : "Already removed");
-        setTimeout(onDone, 500);
+        onRemove(scan.id);
       } else {
         setStatus(`Error: ${data.error}`);
       }
@@ -644,7 +645,12 @@ export default function AdminScansPage() {
       )}
 
       {scans.map((scan) => (
-        <ScanCard key={scan.id} scan={scan} onDone={loadScans} />
+        <ScanCard
+          key={scan.id}
+          scan={scan}
+          onDone={loadScans}
+          onRemove={(id) => setScans((prev) => prev.filter((s) => s.id !== id))}
+        />
       ))}
     </div>
   );
