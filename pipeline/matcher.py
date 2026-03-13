@@ -92,6 +92,31 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             rows = cur.fetchall()
 
         if not rows:
+            # Try reverse: find series whose name appears within the extracted title
+            # e.g. extracted "SPEEDBALL THE MASKED MARVEL" should match series "Speedball"
+            reverse_query = """
+                SELECT
+                    i.id AS issue_id,
+                    s.id AS series_id,
+                    s.name AS series_name,
+                    i.number AS issue_number,
+                    s.year_began,
+                    s.year_ended,
+                    p.name AS publisher_name,
+                    i.price AS db_price
+                FROM issues i
+                JOIN series s ON i.series_id = s.id
+                LEFT JOIN publishers p ON s.publisher_id = p.id
+                WHERE %s ILIKE '%%' || s.name || '%%'
+                  AND i.number = %s
+                  AND length(s.name) >= 3
+                ORDER BY length(s.name) DESC, s.year_began ASC
+                LIMIT 20
+            """
+            cur.execute(reverse_query, (normalized, issue_number))
+            rows = cur.fetchall()
+
+        if not rows:
             return {
                 "matched": False,
                 "confidence": 0,
@@ -125,6 +150,8 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                 score += 50
             elif normalized.lower() in series_name.lower():
                 score += 30
+            elif series_name.lower() in normalized.lower():
+                score += 40  # DB name is contained in extracted title (e.g. "Speedball" in "Speedball The Masked Marvel")
 
             # Issue number matched (already filtered by query)
             score += 25
