@@ -64,20 +64,55 @@ function ScanCard({
     setSeriesResults(data.results || []);
   }, []);
 
-  // Auto-search with extracted title on mount
+  // Auto-match on mount: search series, pick best match, select issue
   useEffect(() => {
-    if (!autoSearched && scan.extracted_title) {
-      setAutoSearched(true);
-      searchSeries(scan.extracted_title);
-    }
-  }, [autoSearched, scan.extracted_title, searchSeries]);
+    if (autoSearched) return;
+    if (!scan.extracted_title) return;
+    setAutoSearched(true);
+
+    (async () => {
+      const res = await fetch(`/api/admin/scans/search-series?q=${encodeURIComponent(scan.extracted_title || "")}`);
+      const data = await res.json();
+      const results: SeriesResult[] = data.results || [];
+      if (results.length === 0) {
+        setSeriesResults(results);
+        return;
+      }
+
+      // Pick best match: prefer year match, then first result
+      let best = results[0];
+      if (scan.extracted_year) {
+        const yearMatch = results.find(
+          (s) => s.year_began && s.year_began <= (scan.extracted_year || 0) &&
+            (!s.year_ended || s.year_ended >= (scan.extracted_year || 0))
+        );
+        if (yearMatch) best = yearMatch;
+      }
+
+      // Auto-select this series and load its issues
+      setSelectedSeries(best);
+      setSeriesQuery(best.name);
+      setSeriesResults([]);
+
+      const issRes = await fetch(`/api/admin/scans/issues?seriesId=${best.id}`);
+      const issData = await issRes.json();
+      const allIssues: IssueResult[] = issData.issues || [];
+      setIssues(allIssues);
+
+      // Auto-select matching issue number
+      if (issueNumber) {
+        const match = allIssues.find((i) => i.number === issueNumber);
+        if (match) setSelectedIssueId(match.id);
+      }
+    })();
+  }, [autoSearched, scan.extracted_title, scan.extracted_year, issueNumber]);
 
   useEffect(() => {
-    if (autoSearched) {
+    if (autoSearched && !selectedSeries) {
       const timer = setTimeout(() => searchSeries(seriesQuery), 300);
       return () => clearTimeout(timer);
     }
-  }, [seriesQuery, searchSeries, autoSearched]);
+  }, [seriesQuery, searchSeries, autoSearched, selectedSeries]);
 
   const selectSeries = async (series: SeriesResult) => {
     setSelectedSeries(series);
