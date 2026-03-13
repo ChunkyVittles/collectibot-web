@@ -30,6 +30,13 @@ def normalize_title(title: str) -> str:
     return t.strip()
 
 
+def strip_punctuation(text: str) -> str:
+    """Remove punctuation and collapse whitespace for fuzzy comparison."""
+    s = re.sub(r"[^\w\s]", " ", text)
+    s = re.sub(r"\s+", " ", s)
+    return s.strip().lower()
+
+
 def slugify(text: str) -> str:
     """Convert text to a URL-safe slug."""
     s = text.lower().strip()
@@ -92,6 +99,30 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             rows = cur.fetchall()
 
         if not rows:
+            # Try punctuation-stripped match: "SPEEDBALL THE MASKED MARVEL" matches "Speedball: The Masked Marvel"
+            stripped = strip_punctuation(normalized)
+            punct_query = """
+                SELECT
+                    i.id AS issue_id,
+                    s.id AS series_id,
+                    s.name AS series_name,
+                    i.number AS issue_number,
+                    s.year_began,
+                    s.year_ended,
+                    p.name AS publisher_name,
+                    i.price AS db_price
+                FROM issues i
+                JOIN series s ON i.series_id = s.id
+                LEFT JOIN publishers p ON s.publisher_id = p.id
+                WHERE regexp_replace(lower(s.name), '[^\\w\\s]', ' ', 'g') ILIKE %s
+                  AND i.number = %s
+                ORDER BY s.year_began ASC
+                LIMIT 20
+            """
+            cur.execute(punct_query, (f"%{stripped}%", issue_number))
+            rows = cur.fetchall()
+
+        if not rows:
             # Try reverse: find series whose name appears within the extracted title
             # e.g. extracted "SPEEDBALL THE MASKED MARVEL" should match series "Speedball"
             reverse_query = """
@@ -145,13 +176,15 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             issue_id, series_id, series_name, db_issue_num, yr_began, yr_ended, pub_name, db_price = row
             score = 0
 
-            # Exact title match
-            if series_name.lower() == normalized.lower():
+            # Title matching (with punctuation-stripped fallback)
+            sn_stripped = strip_punctuation(series_name)
+            norm_stripped = strip_punctuation(normalized)
+            if series_name.lower() == normalized.lower() or sn_stripped == norm_stripped:
                 score += 50
-            elif normalized.lower() in series_name.lower():
+            elif normalized.lower() in series_name.lower() or norm_stripped in sn_stripped:
                 score += 30
-            elif series_name.lower() in normalized.lower():
-                score += 40  # DB name is contained in extracted title (e.g. "Speedball" in "Speedball The Masked Marvel")
+            elif series_name.lower() in normalized.lower() or sn_stripped in norm_stripped:
+                score += 40  # DB name is contained in extracted title
 
             # Issue number matched (already filtered by query)
             score += 25
