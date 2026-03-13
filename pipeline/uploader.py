@@ -88,10 +88,12 @@ def upload_pair(
     front_url = f"https://{bucket}.r2.dev/{r2_front}"
     back_url = f"https://{bucket}.r2.dev/{r2_back}"
 
-    # Insert into scans table
+    # Insert into scans table (replace any existing scans for this issue)
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        cur.execute("DELETE FROM scans WHERE issue_id = %s", (issue_id,))
+
         cur.execute(
             """INSERT INTO scans (issue_id, scan_type, image_url, contributor_id, rights_granted)
                VALUES (%s, %s, %s, %s, %s) RETURNING id""",
