@@ -4,6 +4,7 @@ matcher.py — Match extracted comic metadata against the Collectibot database.
 
 import re
 import os
+from itertools import combinations
 from pathlib import Path
 
 import psycopg2
@@ -146,6 +147,31 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             """
             cur.execute(reverse_query, (normalized, issue_number))
             rows = cur.fetchall()
+
+        if not rows:
+            # Try word-dropping: remove one word at a time from the title and
+            # search for each shortened version. Handles cases like
+            # "Web of Kaine Spider-Man" where "Kaine" is an overlay graphic,
+            # not part of the series name "Web of Spider-Man".
+            words = normalized.split()
+            if len(words) >= 3:
+                # Try dropping 1 word, then 2 words; prefer longer matches
+                for drop_count in range(1, min(3, len(words) - 1)):
+                    for combo in combinations(range(len(words)), len(words) - drop_count):
+                        candidate = " ".join(words[i] for i in combo)
+                        if len(candidate) < 3:
+                            continue
+                        cur.execute(query, (candidate, issue_number))
+                        rows = cur.fetchall()
+                        if rows:
+                            break
+                        # Also try fuzzy
+                        cur.execute(query, (f"%{candidate}%", issue_number))
+                        rows = cur.fetchall()
+                        if rows:
+                            break
+                    if rows:
+                        break
 
         if not rows:
             return {
