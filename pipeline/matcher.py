@@ -225,16 +225,28 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             issue_id, series_id, series_name, db_issue_num, yr_began, yr_ended, pub_name, db_price = row
             score = 0
 
-            # Hard filter: if both prices are known and they don't match, skip entirely
-            if extracted_usd and db_price:
-                db_usd_match = re.search(r"([\d.]+)\s*USD", str(db_price))
-                if db_usd_match:
-                    try:
-                        db_usd = float(db_usd_match.group(1))
-                        if abs(extracted_usd - db_usd) > 1.00:
-                            continue  # Price mismatch — skip this candidate
-                    except ValueError:
-                        pass
+            # Hard filter: skip candidates from wrong era/price
+            if extracted_usd:
+                skip = False
+                if db_price:
+                    db_usd_match = re.search(r"([\d.]+)\s*USD", str(db_price))
+                    if db_usd_match:
+                        try:
+                            db_usd = float(db_usd_match.group(1))
+                            if abs(extracted_usd - db_usd) > 1.00:
+                                skip = True  # USD price mismatch
+                        except ValueError:
+                            pass
+                    elif not db_usd_match:
+                        # DB has a price but no USD component (e.g. "0.15 CAD")
+                        # If extracted price is modern ($1+) and series is pre-1975, skip
+                        if extracted_usd >= 1.00 and yr_began and yr_began < 1975:
+                            skip = True
+                # No DB price at all — use era as proxy
+                elif extracted_usd >= 1.00 and yr_began and yr_began < 1975:
+                    skip = True
+                if skip:
+                    continue
 
             # Title matching (with punctuation-stripped fallback)
             # Compare against both normalized (The-stripped) and original title
