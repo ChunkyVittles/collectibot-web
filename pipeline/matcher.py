@@ -24,13 +24,20 @@ def get_db_connection():
 
 
 def normalize_title(title: str) -> str:
-    """Strip 'The ' prefix, replace & with 'and', and extra whitespace for matching."""
+    """Strip 'The ' prefix and extra whitespace for matching."""
     t = title.strip()
-    # Replace & with "and" for matching
-    t = re.sub(r'\s*&\s*', ' and ', t)
     if t.lower().startswith("the "):
         t = t[4:]
     return t.strip()
+
+
+def ampersand_variant(title: str) -> str | None:
+    """If title contains &, return version with 'and' (or vice versa). None if no change."""
+    if "&" in title:
+        return re.sub(r'\s*&\s*', ' and ', title)
+    if " and " in title.lower():
+        return re.sub(r'\s+and\s+', ' & ', title, flags=re.IGNORECASE)
+    return None
 
 
 def strip_punctuation(text: str) -> str:
@@ -111,6 +118,16 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             # Try fuzzy: add % wildcards
             cur.execute(query, (f"%{normalized}%", issue_number))
             rows = cur.fetchall()
+
+        if not rows:
+            # Try &/and variant: "Sable & Fortune" → "Sable and Fortune" or vice versa
+            alt = ampersand_variant(normalized)
+            if alt:
+                cur.execute(query, (alt, issue_number))
+                rows = cur.fetchall()
+                if not rows:
+                    cur.execute(query, (f"%{alt}%", issue_number))
+                    rows = cur.fetchall()
 
         if not rows:
             # Try punctuation-stripped match: "SPEEDBALL THE MASKED MARVEL" matches "Speedball: The Masked Marvel"
