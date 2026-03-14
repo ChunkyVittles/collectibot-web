@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import UploadCoverButton from "./UploadCoverButton";
+import ImageLightbox from "./ImageLightbox";
 
 type Props = {
   issueId: number;
@@ -36,7 +37,7 @@ export default function IssueCoverSection({
         <div style={{ flex: 1, textAlign: "center" }}>
           <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Front Cover</div>
           {hasFront ? (
-            <img
+            <ImageLightbox
               src={`/api/scans/image?issue=${issueId}&side=front&t=${cacheBust}`}
               alt={`${seriesName} #${issueNumber} front cover`}
               style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
@@ -63,7 +64,7 @@ export default function IssueCoverSection({
         <div style={{ flex: 1, textAlign: "center" }}>
           <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Back Cover</div>
           {hasBack ? (
-            <img
+            <ImageLightbox
               src={`/api/scans/image?issue=${issueId}&side=back&t=${cacheBust}`}
               alt={`${seriesName} #${issueNumber} back cover`}
               style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
