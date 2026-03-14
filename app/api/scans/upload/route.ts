@@ -162,7 +162,7 @@ async function uploadToR2(
       "x-amz-content-sha256": payloadHash,
       Authorization: authorization,
     },
-    body: data,
+    body: data as unknown as BodyInit,
   });
 
   if (!res.ok) {
