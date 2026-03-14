@@ -201,6 +201,77 @@ def deskew(img: Image.Image) -> Image.Image:
     return rotated
 
 
+def _strip_edge_artifacts(gray: np.ndarray, content: np.ndarray) -> tuple[int, int, int, int]:
+    """
+    Find crop bounds that exclude thin dark strips at edges (scanner artifacts).
+
+    Scanner strips are narrow bands of nearly 100% dark pixels at the image edges.
+    The actual comic content has varying density. We detect the transition from
+    edge artifact to real content by looking for a drop in density.
+
+    Returns (top, bottom, left, right) crop coordinates.
+    """
+    h, w = gray.shape
+    row_density = np.mean(content, axis=1)
+    col_density = np.mean(content, axis=0)
+
+    # Find active rows/cols (>5% content)
+    active_rows = np.where(row_density > 0.05)[0]
+    active_cols = np.where(col_density > 0.05)[0]
+
+    if len(active_rows) == 0 or len(active_cols) == 0:
+        return 0, h, 0, w
+
+    top = active_rows[0]
+    bottom = active_rows[-1] + 1
+    left = active_cols[0]
+    right = active_cols[-1] + 1
+
+    # Strip thin dark edges: if the first/last few active columns or rows
+    # have very high density (>80%), they're likely scanner artifacts, not content.
+    # Real comic edges have mixed density. Skip past these high-density strips.
+    edge_threshold = 0.80
+    max_strip = int(min(w, h) * 0.05)  # Don't strip more than 5% from any edge
+
+    # Left edge
+    strip = 0
+    for c in range(left, min(left + max_strip, right)):
+        if col_density[c] > edge_threshold:
+            strip = c - left + 1
+        else:
+            break
+    left += strip
+
+    # Right edge
+    strip = 0
+    for c in range(right - 1, max(right - max_strip, left), -1):
+        if col_density[c] > edge_threshold:
+            strip = right - c
+        else:
+            break
+    right -= strip
+
+    # Top edge
+    strip = 0
+    for r in range(top, min(top + max_strip, bottom)):
+        if row_density[r] > edge_threshold:
+            strip = r - top + 1
+        else:
+            break
+    top += strip
+
+    # Bottom edge
+    strip = 0
+    for r in range(bottom - 1, max(bottom - max_strip, top), -1):
+        if row_density[r] > edge_threshold:
+            strip = bottom - r
+        else:
+            break
+    bottom -= strip
+
+    return top, bottom, left, right
+
+
 def crop_to_content(img: Image.Image) -> Image.Image:
     """
     Deskew, crop tightly, then add a clean white border.
@@ -213,26 +284,15 @@ def crop_to_content(img: Image.Image) -> Image.Image:
     h, w = gray.shape
     content = gray < CONTENT_THRESHOLD
 
-    # Use density-based crop: find rows/cols where >5% of pixels are content.
-    # This ignores scattered noise/dust that getbbox() would include.
-    row_density = np.mean(content, axis=1)
-    col_density = np.mean(content, axis=0)
+    top, bottom, left, right = _strip_edge_artifacts(gray, content)
 
-    active_rows = np.where(row_density > 0.05)[0]
-    active_cols = np.where(col_density > 0.05)[0]
-
-    if len(active_rows) == 0 or len(active_cols) == 0:
+    if right <= left or bottom <= top:
         return img
-
-    top = active_rows[0]
-    bottom = active_rows[-1] + 1
-    left = active_cols[0]
-    right = active_cols[-1] + 1
 
     # Crop tight to content (no padding)
     cropped = img.crop((left, top, right, bottom))
 
-    # Add clean white border — 1/2 inch at scan DPI
+    # Add clean white border
     border_px = int(BORDER_INCHES * SCAN_DPI)
     result = ImageOps.expand(cropped, border=border_px, fill="white")
 
