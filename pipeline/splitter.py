@@ -31,12 +31,74 @@ SCANNER_RIGHT_STRIP_PCT = 0.03  # Fraction of width to chop off right side (scan
 
 
 def strip_scanner_artifact(img: Image.Image) -> Image.Image:
-    """Remove top 50px and right 10% from scan to eliminate scanner artifacts."""
+    """Remove known scanner artifacts and any dark edge pixels.
+
+    1. Chop top 50px (damaged scanner housing) and right 3% (edge artifact).
+    2. Then flood-fill inward from all four edges, removing any dark pixels
+       until we hit clean white. This catches scanner bed shadows, dark strips,
+       and any other edge noise before further processing.
+    """
     w, h = img.size
     top = SCANNER_STRIP_PX if h > SCANNER_STRIP_PX else 0
     right_strip = int(w * SCANNER_RIGHT_STRIP_PCT)
     right = w - right_strip if right_strip > 0 else w
-    return img.crop((0, top, right, h))
+    img = img.crop((0, top, right, h))
+
+    # Now remove any remaining dark edge pixels on all sides
+    gray = np.array(ImageOps.grayscale(img))
+    gh, gw = gray.shape
+
+    # For each edge, scan inward and replace dark pixels with white
+    # until we hit a mostly-white row/column (mean brightness > 240)
+    white_threshold = 240
+    max_strip = int(min(gw, gh) * 0.05)  # Never strip more than 5% per edge
+
+    # Top
+    top_strip = 0
+    for r in range(min(max_strip, gh)):
+        if np.mean(gray[r, :]) < white_threshold:
+            top_strip = r + 1
+        else:
+            break
+
+    # Bottom
+    bottom_strip = 0
+    for r in range(gh - 1, max(gh - max_strip, 0), -1):
+        if np.mean(gray[r, :]) < white_threshold:
+            bottom_strip = gh - r
+        else:
+            break
+
+    # Left
+    left_strip = 0
+    for c in range(min(max_strip, gw)):
+        if np.mean(gray[:, c]) < white_threshold:
+            left_strip = c + 1
+        else:
+            break
+
+    # Right
+    right_strip = 0
+    for c in range(gw - 1, max(gw - max_strip, 0), -1):
+        if np.mean(gray[:, c]) < white_threshold:
+            right_strip = gw - c
+        else:
+            break
+
+    if top_strip or bottom_strip or left_strip or right_strip:
+        new_w, new_h = img.size
+        img = img.crop((
+            left_strip,
+            top_strip,
+            new_w - right_strip,
+            new_h - bottom_strip,
+        ))
+        log.info(
+            f"  Dark edge strip: top={top_strip} bottom={bottom_strip} "
+            f"left={left_strip} right={right_strip}"
+        )
+
+    return img
 
 
 def _find_edge_angle(gray, edge="top"):
