@@ -16,7 +16,7 @@ export async function GET() {
          JOIN series sr ON i.series_id = sr.id
          WHERE s.scan_type = 'front_cover'
          ORDER BY s.issue_id, s.uploaded_at DESC
-       ) t ORDER BY t.uploaded_at DESC LIMIT 20`
+       ) t ORDER BY t.uploaded_at DESC LIMIT 10`
     );
 
     // Get pending/review scans
@@ -28,13 +28,13 @@ export async function GET() {
               'pending' AS status
        FROM pending_scans
        ORDER BY created_at DESC
-       LIMIT 20`
+       LIMIT 10`
     );
 
     // Merge and sort by date
     const all = [...matched.rows, ...pending.rows]
       .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
-      .slice(0, 20);
+      .slice(0, 10);
 
     return NextResponse.json(all);
   } catch (e: any) {
