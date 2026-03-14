@@ -24,8 +24,10 @@ def get_db_connection():
 
 
 def normalize_title(title: str) -> str:
-    """Strip 'The ' prefix and extra whitespace for matching."""
+    """Strip 'The ' prefix, replace & with 'and', and extra whitespace for matching."""
     t = title.strip()
+    # Replace & with "and" for matching
+    t = re.sub(r'\s*&\s*', ' and ', t)
     if t.lower().startswith("the "):
         t = t[4:]
     return t.strip()
@@ -36,6 +38,17 @@ def strip_punctuation(text: str) -> str:
     s = re.sub(r"[^\w\s]", " ", text)
     s = re.sub(r"\s+", " ", s)
     return s.strip().lower()
+
+
+def keywords_only(text: str) -> str:
+    """Extract meaningful keywords, dropping noise words and punctuation.
+    'Batman & the Monster Men' → 'Batman Monster Men'
+    'Batman: The Monster Men' → 'Batman Monster Men'
+    """
+    s = re.sub(r"[^\w\s]", " ", text)
+    noise = {"the", "and", "of", "a", "an", "in", "on", "for", "with", "from"}
+    words = [w for w in s.split() if w.lower() not in noise]
+    return " ".join(words)
 
 
 def slugify(text: str) -> str:
@@ -149,6 +162,16 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             rows = cur.fetchall()
 
         if not rows:
+            # Try keywords-only: strip noise words (and, the, of) and match
+            # e.g. "Batman and the Monster Men" → keywords "Batman Monster Men"
+            # matches DB "Batman: The Monster Men" via fuzzy
+            kw = keywords_only(normalized)
+            if kw and kw != strip_punctuation(normalized):
+                kw_pattern = "%" + "%".join(kw.split()) + "%"
+                cur.execute(query, (kw_pattern, issue_number))
+                rows = cur.fetchall()
+
+        if not rows:
             # Try word-dropping: remove one word at a time from the title and
             # search for each shortened version. Handles cases like
             # "Web of Kaine Spider-Man" where "Kaine" is an overlay graphic,
@@ -249,8 +272,15 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                             score += 30  # Exact price match — very strong signal
                         elif abs(extracted_usd - db_usd) < 0.50:
                             score += 10  # Close price
+                        elif abs(extracted_usd - db_usd) > 1.00:
+                            score -= 20  # Big price mismatch — wrong era/series
                     except ValueError:
                         pass
+
+            # Era mismatch: if extracted price suggests modern comic but DB issue
+            # is from Golden/Silver age (pre-1975), heavily penalize
+            if extracted_usd and extracted_usd >= 1.00 and yr_began and yr_began < 1975:
+                score -= 30  # Modern price on pre-1975 series = almost certainly wrong
 
             if score > best_score:
                 best_score = score
