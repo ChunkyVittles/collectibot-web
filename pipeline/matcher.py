@@ -225,6 +225,17 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             issue_id, series_id, series_name, db_issue_num, yr_began, yr_ended, pub_name, db_price = row
             score = 0
 
+            # Hard filter: if both prices are known and they don't match, skip entirely
+            if extracted_usd and db_price:
+                db_usd_match = re.search(r"([\d.]+)\s*USD", str(db_price))
+                if db_usd_match:
+                    try:
+                        db_usd = float(db_usd_match.group(1))
+                        if abs(extracted_usd - db_usd) > 1.00:
+                            continue  # Price mismatch — skip this candidate
+                    except ValueError:
+                        pass
+
             # Title matching (with punctuation-stripped fallback)
             # Compare against both normalized (The-stripped) and original title
             sn_stripped = strip_punctuation(series_name)
@@ -262,25 +273,18 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             elif pub_name and pub_extracted and pub_extracted in pub_name.lower():
                 score += 10
 
-            # Price match — strong signal for disambiguating same-title series
+            # Price match bonus
             if extracted_usd and db_price:
                 db_usd_match = re.search(r"([\d.]+)\s*USD", str(db_price))
                 if db_usd_match:
                     try:
                         db_usd = float(db_usd_match.group(1))
                         if abs(extracted_usd - db_usd) < 0.01:
-                            score += 30  # Exact price match — very strong signal
+                            score += 30  # Exact price match
                         elif abs(extracted_usd - db_usd) < 0.50:
                             score += 10  # Close price
-                        elif abs(extracted_usd - db_usd) > 1.00:
-                            score -= 20  # Big price mismatch — wrong era/series
                     except ValueError:
                         pass
-
-            # Era mismatch: if extracted price suggests modern comic but DB issue
-            # is from Golden/Silver age (pre-1975), heavily penalize
-            if extracted_usd and extracted_usd >= 1.00 and yr_began and yr_began < 1975:
-                score -= 30  # Modern price on pre-1975 series = almost certainly wrong
 
             if score > best_score:
                 best_score = score
