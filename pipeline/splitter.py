@@ -201,13 +201,49 @@ def deskew(img: Image.Image) -> Image.Image:
     return rotated
 
 
+def _find_content_block(density: np.ndarray) -> tuple[int, int]:
+    """
+    Find the main content block, ignoring thin isolated bands (scanner shadows).
+
+    Strategy: find contiguous runs of active pixels (>5% density), then pick
+    the longest run. Scanner shadows are thin (10-30px) while the actual comic
+    spans hundreds of pixels.
+    """
+    min_density = 0.05
+    n = len(density)
+
+    # Find contiguous runs of active content
+    runs = []
+    in_run = False
+    run_start = 0
+
+    for i in range(n):
+        if density[i] > min_density:
+            if not in_run:
+                run_start = i
+                in_run = True
+        else:
+            if in_run:
+                runs.append((run_start, i))
+                in_run = False
+    if in_run:
+        runs.append((run_start, n))
+
+    if not runs:
+        return 0, n
+
+    # Pick the longest run — that's the actual comic content
+    longest = max(runs, key=lambda r: r[1] - r[0])
+    return longest
+
+
 def _strip_edge_artifacts(gray: np.ndarray, content: np.ndarray) -> tuple[int, int, int, int]:
     """
-    Find crop bounds that exclude thin dark strips at edges (scanner artifacts).
+    Find crop bounds by identifying the main content block in each axis.
 
-    Scanner strips are narrow bands of nearly 100% dark pixels at the image edges.
-    The actual comic content has varying density. We detect the transition from
-    edge artifact to real content by looking for a drop in density.
+    Scanner shadows create thin isolated bands of low density at image edges.
+    We find the longest contiguous run of content rows/cols — that's the comic.
+    Thin edge strips and shadows are ignored because they're much shorter.
 
     Returns (top, bottom, left, right) crop coordinates.
     """
@@ -215,59 +251,8 @@ def _strip_edge_artifacts(gray: np.ndarray, content: np.ndarray) -> tuple[int, i
     row_density = np.mean(content, axis=1)
     col_density = np.mean(content, axis=0)
 
-    # Find active rows/cols (>5% content)
-    active_rows = np.where(row_density > 0.05)[0]
-    active_cols = np.where(col_density > 0.05)[0]
-
-    if len(active_rows) == 0 or len(active_cols) == 0:
-        return 0, h, 0, w
-
-    top = active_rows[0]
-    bottom = active_rows[-1] + 1
-    left = active_cols[0]
-    right = active_cols[-1] + 1
-
-    # Strip thin dark edges: if the first/last few active columns or rows
-    # have very high density (>80%), they're likely scanner artifacts, not content.
-    # Real comic edges have mixed density. Skip past these high-density strips.
-    edge_threshold = 0.80
-    max_strip = int(min(w, h) * 0.05)  # Don't strip more than 5% from any edge
-
-    # Left edge
-    strip = 0
-    for c in range(left, min(left + max_strip, right)):
-        if col_density[c] > edge_threshold:
-            strip = c - left + 1
-        else:
-            break
-    left += strip
-
-    # Right edge
-    strip = 0
-    for c in range(right - 1, max(right - max_strip, left), -1):
-        if col_density[c] > edge_threshold:
-            strip = right - c
-        else:
-            break
-    right -= strip
-
-    # Top edge
-    strip = 0
-    for r in range(top, min(top + max_strip, bottom)):
-        if row_density[r] > edge_threshold:
-            strip = r - top + 1
-        else:
-            break
-    top += strip
-
-    # Bottom edge
-    strip = 0
-    for r in range(bottom - 1, max(bottom - max_strip, top), -1):
-        if row_density[r] > edge_threshold:
-            strip = bottom - r
-        else:
-            break
-    bottom -= strip
+    top, bottom = _find_content_block(row_density)
+    left, right = _find_content_block(col_density)
 
     return top, bottom, left, right
 
