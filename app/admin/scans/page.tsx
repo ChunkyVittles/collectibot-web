@@ -124,11 +124,11 @@ function ScanCard({
   }, [autoSearched, scan.extracted_title, scan.extracted_year, issueNumber]);
 
   useEffect(() => {
-    if (autoSearched && !selectedSeries) {
+    if (!selectedSeries) {
       const timer = setTimeout(() => searchSeries(seriesQuery), 300);
       return () => clearTimeout(timer);
     }
-  }, [seriesQuery, searchSeries, autoSearched, selectedSeries]);
+  }, [seriesQuery, searchSeries, selectedSeries]);
 
   const selectSeries = async (series: SeriesResult) => {
     setSelectedSeries(series);
@@ -335,6 +335,12 @@ function ScanCard({
             style={{ ...inputStyle, marginBottom: 0 }}
           />
         </label>
+
+        {!selectedSeries && seriesQuery.length >= 2 && seriesResults.length === 0 && autoSearched && (
+          <div style={{ color: "#888", fontSize: 12, marginTop: 4 }}>
+            No series found for &quot;{seriesQuery}&quot;
+          </div>
+        )}
 
         {seriesResults.length > 0 && (
           <div
