@@ -299,6 +299,69 @@ def _find_content_block(density: np.ndarray) -> tuple[int, int]:
     return longest
 
 
+def _gradient_edge_detection(gray: np.ndarray) -> tuple[int, int, int, int] | None:
+    """
+    Find the comic's physical edge using gradient magnitude.
+
+    On a flatbed scanner, the comic's thickness creates a subtle shadow line
+    at its edges. This shows up as a strong gradient even when both the comic
+    and scanner bed are white.
+
+    Returns (top, bottom, left, right) crop coordinates, or None if no clear edges found.
+    """
+    h, w = gray.shape
+
+    # Compute Sobel gradients
+    grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+
+    abs_grad_x = np.abs(grad_x)
+    abs_grad_y = np.abs(grad_y)
+
+    # For horizontal edges (top/bottom): look at vertical gradient strength per row
+    row_grad = np.mean(abs_grad_y, axis=1)
+    # For vertical edges (left/right): look at horizontal gradient strength per column
+    col_grad = np.mean(abs_grad_x, axis=0)
+
+    # Threshold: a strong edge line has much higher gradient than background noise
+    row_threshold = np.percentile(row_grad, 85)
+    col_threshold = np.percentile(col_grad, 85)
+
+    # Find top edge: first strong horizontal gradient line in top 30%
+    top = 0
+    for r in range(int(h * 0.30)):
+        if row_grad[r] > row_threshold:
+            top = r
+            break
+
+    # Find bottom edge: last strong horizontal gradient line in bottom 30%
+    bottom = h
+    for r in range(h - 1, int(h * 0.70), -1):
+        if row_grad[r] > row_threshold:
+            bottom = r + 1
+            break
+
+    # Find left edge: first strong vertical gradient line in left 30%
+    left = 0
+    for c in range(int(w * 0.30)):
+        if col_grad[c] > col_threshold:
+            left = c
+            break
+
+    # Find right edge: last strong vertical gradient line in right 30%
+    right = w
+    for c in range(w - 1, int(w * 0.70), -1):
+        if col_grad[c] > col_threshold:
+            right = c + 1
+            break
+
+    # Validate: the detected area should be at least 50% of image in both dimensions
+    if (right - left) < w * 0.5 or (bottom - top) < h * 0.5:
+        return None
+
+    return top, bottom, left, right
+
+
 def _strip_edge_artifacts(gray: np.ndarray, content: np.ndarray) -> tuple[int, int, int, int]:
     """
     Find crop bounds by identifying the main content block in each axis.
@@ -306,6 +369,11 @@ def _strip_edge_artifacts(gray: np.ndarray, content: np.ndarray) -> tuple[int, i
     Scanner shadows create thin isolated bands of low density at image edges.
     We find the longest contiguous run of content rows/cols — that's the comic.
     Thin edge strips and shadows are ignored because they're much shorter.
+
+    For mostly-white images (e.g. white back covers), content density fails
+    because the comic's white merges with the scanner bed's white. In that case,
+    fall back to gradient-based edge detection which finds the physical shadow
+    at the comic's edge.
 
     Returns (top, bottom, left, right) crop coordinates.
     """
@@ -315,6 +383,23 @@ def _strip_edge_artifacts(gray: np.ndarray, content: np.ndarray) -> tuple[int, i
 
     top, bottom = _find_content_block(row_density)
     left, right = _find_content_block(col_density)
+
+    # Check if content-based crop basically failed (covers >90% of image = no real edges found)
+    content_fraction = np.mean(content)
+    crop_w_frac = (right - left) / w
+    crop_h_frac = (bottom - top) / h
+
+    if content_fraction < 0.08 and (crop_w_frac > 0.90 or crop_h_frac > 0.90):
+        # Mostly white image — content threshold couldn't find edges
+        log.info(f"  Low content ({content_fraction:.1%}), trying gradient edge detection")
+        grad_bounds = _gradient_edge_detection(gray)
+        if grad_bounds:
+            g_top, g_bottom, g_left, g_right = grad_bounds
+            log.info(
+                f"  Gradient edges: top={g_top} bottom={g_bottom} "
+                f"left={g_left} right={g_right}"
+            )
+            return g_top, g_bottom, g_left, g_right
 
     return top, bottom, left, right
 

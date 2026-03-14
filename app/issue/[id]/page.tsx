@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import DeleteScansButton from "@/app/components/DeleteScansButton";
 import ReassignScansButton from "@/app/components/ReassignScansButton";
 import SetHeroButton from "@/app/components/SetHeroButton";
-import ImageLightbox from "@/app/components/ImageLightbox";
+import IssueCoverSection from "@/app/components/IssueCoverSection";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -40,8 +40,6 @@ export default async function IssuePage({ params }: Props) {
 
   const cookieStore = await cookies();
   const isAdmin = !!cookieStore.get("cb_auth");
-  const cacheBust = Date.now();
-
   const heroRes = await pool.query(
     `SELECT hero_issue_id FROM series_settings WHERE series_id = $1`,
     [issue.series_id]
@@ -63,47 +61,30 @@ export default async function IssuePage({ params }: Props) {
         {issue.variant_name && <> &middot; {issue.variant_name}</>}
       </p>
 
-      {(hasFront || hasBack) && (
-        <>
-          <div style={{ display: "flex", gap: 20, marginTop: 24 }}>
-            {hasFront && (
-              <div style={{ flex: 1, textAlign: "center" }}>
-                <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Front Cover</div>
-                <ImageLightbox
-                  src={`/api/scans/image?issue=${issue.id}&side=front&t=${cacheBust}`}
-                  alt={`${issue.series_name} #${issue.number} front cover`}
-                  style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
-                />
-              </div>
-            )}
-            {hasBack && (
-              <div style={{ flex: 1, textAlign: "center" }}>
-                <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Back Cover</div>
-                <ImageLightbox
-                  src={`/api/scans/image?issue=${issue.id}&side=back&t=${cacheBust}`}
-                  alt={`${issue.series_name} #${issue.number} back cover`}
-                  style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
-                />
-              </div>
-            )}
-          </div>
-          {isAdmin && (
-            <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", marginTop: 16 }}>
-              <DeleteScansButton issueId={issue.id} />
-              <ReassignScansButton
-                issueId={issue.id}
-                currentSeries={issue.series_name}
-                currentIssueNumber={issue.number}
-                currentSeriesId={issue.series_id}
-              />
-              <SetHeroButton
-                seriesId={issue.series_id}
-                issueId={issue.id}
-                isHero={isHero}
-              />
-            </div>
-          )}
-        </>
+      <IssueCoverSection
+        issueId={issue.id}
+        seriesName={issue.series_name}
+        issueNumber={issue.number}
+        hasFront={hasFront}
+        hasBack={hasBack}
+        isAdmin={isAdmin}
+      />
+
+      {isAdmin && (hasFront || hasBack) && (
+        <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", marginTop: 16 }}>
+          <DeleteScansButton issueId={issue.id} />
+          <ReassignScansButton
+            issueId={issue.id}
+            currentSeries={issue.series_name}
+            currentIssueNumber={issue.number}
+            currentSeriesId={issue.series_id}
+          />
+          <SetHeroButton
+            seriesId={issue.series_id}
+            issueId={issue.id}
+            isHero={isHero}
+          />
+        </div>
       )}
 
       <div style={{ marginTop: 32 }}>
