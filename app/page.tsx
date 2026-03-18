@@ -57,7 +57,7 @@ export default function Home() {
   return (
     <div style={{ maxWidth: 700, margin: "80px auto", padding: "0 20px", fontFamily: "system-ui" }}>
       <h1>Collectibot</h1>
-      <p style={{ color: "#666" }}>Search 20M+ comic book records</p>
+      <p style={{ color: "#666" }}>Search 20M+ records</p>
 
       <form onSubmit={handleSearch} style={{ marginTop: 20 }}>
         <input

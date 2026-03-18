@@ -379,6 +379,9 @@ async function main() {
     const { watch } = await import("fs");
     const processing = new Set<string>();
 
+    // Keep the process alive
+    setInterval(() => {}, 60000);
+
     watch(INBOX, async (_event, filename) => {
       if (!filename || !filename.match(/_1\.jpe?g$/i)) return;
       const id = filename.replace(/_1\.jpe?g$/i, "");
