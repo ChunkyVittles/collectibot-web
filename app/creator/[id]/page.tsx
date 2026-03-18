@@ -90,10 +90,26 @@ export default function CreatorPage() {
     return true;
   });
 
-  // Group by decade
-  const decades = new Map<string, Credit[]>();
-  const undated: Credit[] = [];
+  // Merge credits for the same issue into one row with combined roles
+  type MergedCredit = Credit & { roles: string };
+  const mergedMap = new Map<number, MergedCredit>();
   for (const c of filtered) {
+    const existing = mergedMap.get(c.issue_id);
+    if (existing) {
+      const roles = new Set(existing.roles.split(", "));
+      roles.add(formatCreditType(c.credit_type));
+      existing.roles = Array.from(roles).join(", ");
+      if (!existing.key_comment_1 && c.key_comment_1) existing.key_comment_1 = c.key_comment_1;
+    } else {
+      mergedMap.set(c.issue_id, { ...c, roles: formatCreditType(c.credit_type) });
+    }
+  }
+  const merged = Array.from(mergedMap.values());
+
+  // Group by decade
+  const decades = new Map<string, MergedCredit[]>();
+  const undated: MergedCredit[] = [];
+  for (const c of merged) {
     const year = yearFromKeyDate(c.key_date);
     if (!year) {
       undated.push(c);
@@ -187,6 +203,7 @@ export default function CreatorPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
+                  <th style={{ padding: "4px 8px 4px 0", width: 40 }}></th>
                   <th style={{ padding: "4px 8px 4px 0", width: 50 }}>Year</th>
                   <th style={{ padding: "4px 8px" }}>Series</th>
                   <th style={{ padding: "4px 8px", width: 50 }}>#</th>
@@ -198,7 +215,17 @@ export default function CreatorPage() {
                 {items.map((c, i) => {
                   const year = yearFromKeyDate(c.key_date);
                   return (
-                    <tr key={`${c.issue_id}-${c.credit_type}-${i}`} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                    <tr key={c.issue_id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                      <td style={{ padding: "4px 8px 4px 0" }}>
+                        <Link href={`/issue/${c.issue_id}`} style={{ display: "block", textDecoration: "none" }}>
+                          <img
+                            src={`/api/scans/image?issue=${c.issue_id}&side=front`}
+                            alt=""
+                            style={{ width: 32, height: 48, objectFit: "cover", borderRadius: 2, verticalAlign: "middle", background: "#eee", border: "1px solid #ddd" }}
+                            onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.15"; }}
+                          />
+                        </Link>
+                      </td>
                       <td style={{ padding: "4px 8px 4px 0", color: "#666" }}>{year}</td>
                       <td style={{ padding: "4px 8px" }}>
                         <Link href={`/series/${c.series_id}`} style={{ color: "inherit", textDecoration: "none", borderBottom: "1px solid #ccc" }}>
@@ -216,7 +243,7 @@ export default function CreatorPage() {
                         )}
                       </td>
                       <td style={{ padding: "4px 8px" }}>{c.number}</td>
-                      <td style={{ padding: "4px 8px", color: "#666" }}>{formatCreditType(c.credit_type)}</td>
+                      <td style={{ padding: "4px 8px", color: "#666" }}>{c.roles}</td>
                       <td style={{ padding: "4px 8px", color: "#999" }}>{c.publisher || "—"}</td>
                     </tr>
                   );
@@ -247,7 +274,17 @@ export default function CreatorPage() {
             </thead>
             <tbody>
               {undated.map((c, i) => (
-                <tr key={`undated-${c.issue_id}-${c.credit_type}-${i}`} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                <tr key={`undated-${c.issue_id}`} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                  <td style={{ padding: "4px 8px 4px 0" }}>
+                    <Link href={`/issue/${c.issue_id}`} style={{ display: "block", textDecoration: "none" }}>
+                      <img
+                        src={`/api/scans/image?issue=${c.issue_id}&side=front`}
+                        alt=""
+                        style={{ width: 32, height: 48, objectFit: "cover", borderRadius: 2, verticalAlign: "middle", background: "#1a1a1a", border: "1px solid #333" }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    </Link>
+                  </td>
                   <td style={{ padding: "4px 8px 4px 0", color: "#666" }}>—</td>
                   <td style={{ padding: "4px 8px" }}>
                     <Link href={`/series/${c.series_id}`} style={{ color: "inherit", textDecoration: "none", borderBottom: "1px solid #ccc" }}>

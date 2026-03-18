@@ -16,23 +16,21 @@ export default function UploadCoverButton({ issueId, side, onUploaded }: Props) 
   const label = side === "front" ? "Front Cover" : "Back Cover";
 
   async function convertToWebp(file: File): Promise<Blob> {
+    // createImageBitmap respects EXIF orientation and strips metadata
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("No canvas context");
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
     return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("No canvas context"));
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob(
-          (blob) => (blob ? resolve(blob) : reject(new Error("Conversion failed"))),
-          "image/webp",
-          0.92
-        );
-      };
-      img.onerror = () => reject(new Error("Failed to load image"));
-      img.src = URL.createObjectURL(file);
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error("Conversion failed"))),
+        "image/webp",
+        0.92
+      );
     });
   }
 

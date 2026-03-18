@@ -4,7 +4,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow login page, login API, and public scan endpoints through
-  if (pathname === "/login" || pathname === "/api/login" || pathname.startsWith("/api/scans/")) {
+  if (pathname === "/login" || pathname === "/api/login" || pathname.startsWith("/api/scans/") || pathname.startsWith("/postcards")) {
     return NextResponse.next();
   }
 

@@ -34,7 +34,9 @@ export async function GET(_request: NextRequest, { params }: Props) {
      JOIN series s ON i.series_id = s.id
      LEFT JOIN publishers p ON s.publisher_id = p.id
      WHERE ic.creator_id = $1
-     ORDER BY i.key_date ASC NULLS LAST, s.name, i.number`,
+     ORDER BY i.key_date ASC NULLS LAST,
+            (SELECT ki.key_comment_1 FROM key_issues ki WHERE ki.issue_id = i.id AND ki.key_comment_1 IS NOT NULL LIMIT 1) NULLS LAST,
+            s.name, i.number`,
     [id]
   );
 

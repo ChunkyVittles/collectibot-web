@@ -295,14 +295,6 @@ function ScanCard({
         }}
       >
         <label style={{ color: "#aaa", fontSize: 13 }}>
-          Title
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            style={inputStyle}
-          />
-        </label>
-        <label style={{ color: "#aaa", fontSize: 13 }}>
           Issue Number
           <input
             value={issueNumber}
@@ -323,7 +315,7 @@ function ScanCard({
       {/* Series search */}
       <div style={{ marginBottom: 16 }}>
         <label style={{ color: "#aaa", fontSize: 13 }}>
-          Search Series in Database
+          Series
           <input
             value={seriesQuery}
             onChange={(e) => {

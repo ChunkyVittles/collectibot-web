@@ -8,14 +8,18 @@
     "build:cloudflare": "npx @opennextjs/cloudflare build",
     "preview": "npx wrangler dev",
     "deploy": "npx wrangler deploy",
-    "start": "next start"
+    "start": "next start",
+    "ingest:postcards": "tsx scripts/ingest-postcards.ts",
+    "ingest:postcards:watch": "tsx scripts/ingest-postcards.ts --watch"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.79.0",
     "next": "16.1.6",
     "pg": "^8.20.0",
     "postgres": "^3.4.8",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.17.1",
@@ -23,6 +27,7 @@
     "@types/pg": "^8.18.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

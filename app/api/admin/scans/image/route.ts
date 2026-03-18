@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   }
 
   // R2 key path (e.g. "pending/foo.webp") — fetch from R2
-  if (path.startsWith("pending/") || path.startsWith("comics/")) {
+  if (path.startsWith("pending/") || path.startsWith("comics/") || path.startsWith("postcards/")) {
     try {
       const accountId = process.env.R2_ACCOUNT_ID || "";
       const accessKeyId = process.env.R2_ACCESS_KEY_ID || "";

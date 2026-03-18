@@ -31,8 +31,19 @@ export async function GET() {
        LIMIT 10`
     );
 
+    // Get recent postcards
+    const postcards = await pool.query(
+      `SELECT p.id AS postcard_id, p.description, p.postmark_city,
+              s.uploaded_at,
+              'postcard' AS status
+       FROM postcards p
+       JOIN scans s ON s.postcard_id = p.id AND s.scan_type = 'postcard_front'
+       ORDER BY s.uploaded_at DESC
+       LIMIT 10`
+    );
+
     // Merge and sort by date
-    const all = [...matched.rows, ...pending.rows]
+    const all = [...matched.rows, ...pending.rows, ...postcards.rows]
       .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
       .slice(0, 10);
 
