@@ -25,8 +25,8 @@ for (const envFile of [".dev.vars", ".env.local"]) {
 // ---------------------------------------------------------------------------
 const INBOX = process.env.POSTCARD_INBOX || join(process.env.HOME!, "Desktop/Postcards/inbox");
 const DONE = process.env.POSTCARD_DONE || join(process.env.HOME!, "Desktop/Postcards/done");
-const DATABASE_URL = process.env.DATABASE_URL || "postgresql://collectibot:collectibot_cf_2024@172.234.24.65:5433/collectibot";
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || "73dc075a05ec7910d286e84df20b0960";
+const DATABASE_URL = process.env.DATABASE_URL || "";
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || "";
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
 const R2_BUCKET = process.env.R2_BUCKET || "collectibot-scans";
