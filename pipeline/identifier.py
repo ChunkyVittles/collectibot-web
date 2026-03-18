@@ -19,7 +19,8 @@ FRONT_PROMPT = """This is a comic book cover. Extract exactly:
 3. Publisher name
 4. Cover date or year
 5. Cover price if visible
-Return as JSON: {"title", "issue_number", "publisher", "year", "price"}
+6. Cover variant — look carefully for small text like "CVR A", "CVR B", "Cover A", "Cover B", "CVR RI" (retailer incentive), "2nd Printing", "3rd Print", "Variant Edition", etc. Often printed small near the barcode, price, or issue number. Return the variant label exactly as printed, or null if none found
+Return as JSON: {"title", "issue_number", "publisher", "year", "price", "variant"}
 Return ONLY the JSON object, no markdown fences or extra text."""
 
 BACK_PROMPT = """This is the back cover of a comic book. Extract:

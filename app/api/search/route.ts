@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/app/lib/db";
 
-// Strip leading "The " for comparison
-const STRIP = `REGEXP_REPLACE(LOWER(s.name), '^the ', '', 'i')`;
+// Strip leading "The " and all punctuation for fuzzy comparison
+const STRIP = `REGEXP_REPLACE(REGEXP_REPLACE(LOWER(s.name), '^the ', '', 'i'), '[^a-z0-9 ]', '', 'g')`;
 
 const SERIES_RANK_SQL = `
   CASE
@@ -20,6 +20,10 @@ const RANK_SQL = `
   END
 `;
 
+function stripPunctuation(s: string): string {
+  return s.replace(/[^a-z0-9 ]/gi, "").replace(/\s+/g, " ").trim();
+}
+
 export async function GET(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get("q")?.trim();
 
@@ -29,23 +33,23 @@ export async function GET(request: NextRequest) {
 
   // Strip "#..." suffix for series search (e.g. "Amazing Spider-Man #1" → "Amazing Spider-Man")
   const seriesQ = raw.replace(/#.*$/, "").trim() || raw;
-  // Strip leading "The " from the query too
-  const seriesQNoArticle = seriesQ.replace(/^the\s+/i, "");
+  // Strip leading "The " and punctuation from the query
+  const seriesQClean = stripPunctuation(seriesQ.replace(/^the\s+/i, ""));
 
-  const seriesContains = `%${seriesQNoArticle}%`;
-  const seriesStartsWith = `${seriesQNoArticle}%`;
+  const seriesContains = `%${seriesQClean}%`;
+  const seriesStartsWith = `${seriesQClean}%`;
   const contains = `%${raw}%`;
   const startsWith = `${raw}%`;
 
   try {
   const [series, creators, characters] = await Promise.all([
     pool.query(
-      `SELECT s.id, s.name, s.year_began, s.year_ended, p.name AS publisher
+      `SELECT s.id, s.name, s.year_began, s.year_ended, s.issue_count, p.name AS publisher
        FROM series s
        LEFT JOIN publishers p ON s.publisher_id = p.id
        WHERE ${STRIP} ILIKE $3
        ORDER BY ${SERIES_RANK_SQL}, s.year_began ASC NULLS LAST, s.name ASC`,
-      [seriesQNoArticle, seriesStartsWith, seriesContains]
+      [seriesQClean, seriesStartsWith, seriesContains]
     ),
     pool.query(
       `SELECT id, name, slug, birth_year

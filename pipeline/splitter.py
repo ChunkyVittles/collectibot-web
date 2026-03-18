@@ -106,8 +106,8 @@ def _find_edge_angle(gray, edge="top"):
     Find the angle of a book edge by tracing the boundary between white scanner
     background and the comic book.
 
-    For 'top': scan each column top-down, find first content pixel → fit line.
-    For 'left': scan each row left-to-right, find first content pixel → fit line.
+    For 'top': find the first content pixel per column (vectorized) → fit line.
+    For 'left': find the first content pixel per row (vectorized) → fit line.
 
     Uses aggressive outlier removal: first pass finds the rough edge with median
     filtering, second pass uses RANSAC-style inlier selection to ignore artwork
@@ -116,24 +116,24 @@ def _find_edge_angle(gray, edge="top"):
     Returns (angle_degrees, num_points) or None.
     """
     h, w = gray.shape
+    mask = gray < CONTENT_THRESHOLD
 
     if edge == "top":
-        # For each column, find the topmost non-white pixel
-        first_pixels = []
-        for col in range(0, w, 2):
-            col_data = gray[:, col]
-            hits = np.where(col_data < CONTENT_THRESHOLD)[0]
-            if len(hits) > 0:
-                first_pixels.append((col, hits[0]))
+        # Sample every 2nd column; find topmost content pixel per column vectorized
+        cols = np.arange(0, w, 2)
+        col_mask = mask[:, cols]                  # shape: (h, len(cols))
+        has_content = col_mask.any(axis=0)        # which columns have any content
+        col_mask = col_mask[:, has_content]
+        cols = cols[has_content]
+        # argmax on axis=0 gives the index of the first True per column
+        first_y = np.argmax(col_mask, axis=0).astype(np.float64)
 
-        if len(first_pixels) < 50:
+        if len(cols) < 50:
             return None
 
-        xs = np.array([p[0] for p in first_pixels], dtype=np.float64)
-        ys = np.array([p[1] for p in first_pixels], dtype=np.float64)
+        xs = cols.astype(np.float64)
+        ys = first_y
 
-        # The top edge of the book is the HIGHEST (smallest y) consistent line.
-        # Artwork sticking up above the edge is rare; shadows/noise below are common.
         # Pass 1: remove points far from the median
         median_y = np.median(ys)
         mad = np.median(np.abs(ys - median_y))
@@ -158,27 +158,24 @@ def _find_edge_angle(gray, edge="top"):
         return angle, len(xs)
 
     elif edge == "left":
-        # For each row, find the leftmost non-white pixel
-        first_pixels = []
-        for row in range(0, h, 2):
-            row_data = gray[row, :]
-            hits = np.where(row_data < CONTENT_THRESHOLD)[0]
-            if len(hits) > 0:
-                first_pixels.append((hits[0], row))
+        # Sample every 2nd row; find leftmost content pixel per row vectorized
+        rows = np.arange(0, h, 2)
+        row_mask = mask[rows, :]                  # shape: (len(rows), w)
+        has_content = row_mask.any(axis=1)        # which rows have any content
+        row_mask = row_mask[has_content, :]
+        rows = rows[has_content]
+        # argmax on axis=1 gives the index of the first True per row
+        first_x = np.argmax(row_mask, axis=1).astype(np.float64)
 
-        if len(first_pixels) < 50:
+        if len(rows) < 50:
             return None
 
-        xs = np.array([p[0] for p in first_pixels], dtype=np.float64)
-        ys = np.array([p[1] for p in first_pixels], dtype=np.float64)
+        xs = first_x
+        ys = rows.astype(np.float64)
 
-        # Pass 1: the left edge is the LEFTMOST (smallest x) consistent line.
-        # Artwork protruding left of the book spine is the main noise source.
-        # Use the median x as baseline — points far left of it are protruding art.
+        # Pass 1: remove outliers (protruding artwork = smaller x)
         median_x = np.median(xs)
         mad = np.median(np.abs(xs - median_x))
-        # Keep points near the median, but bias toward LARGER x values
-        # (protruding artwork goes LEFT of the spine = smaller x = outlier)
         keep = (xs > median_x - max(mad * 1.5, 15)) & (xs < median_x + max(mad * 3, 30))
         xs, ys = xs[keep], ys[keep]
 
@@ -220,11 +217,17 @@ def deskew(img: Image.Image) -> Image.Image:
     if content_pixels < 1000:
         return img
 
+    # Run edge detection on a 25% downsampled copy for speed.
+    # Angle is scale-invariant so accuracy is unchanged.
+    small = img.resize((w // 4, h // 4), Image.BOX)
+    small_gray = np.array(ImageOps.grayscale(small))
+    small.close()
+
     # Detect top edge angle
-    top_result = _find_edge_angle(gray, edge="top")
+    top_result = _find_edge_angle(small_gray, edge="top")
 
     # Detect left edge angle
-    left_result = _find_edge_angle(gray, edge="left")
+    left_result = _find_edge_angle(small_gray, edge="left")
 
     top_angle = top_result[0] if top_result else None
     left_angle = left_result[0] if left_result else None

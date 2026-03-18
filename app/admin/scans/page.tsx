@@ -408,7 +408,7 @@ function ScanCard({
       {selectedSeries && issues.length > 0 && (
         <div style={{ marginBottom: 16, position: "relative" }}>
           <label style={{ color: "#aaa", fontSize: 13 }}>
-            Variant
+            Issue / Variant
             <input
               value={issueSearch}
               onChange={(e) => {
@@ -417,16 +417,47 @@ function ScanCard({
                 setIssueDropdownOpen(true);
               }}
               onFocus={() => setIssueDropdownOpen(true)}
-              placeholder="Type issue number..."
+              placeholder="Type issue number (e.g. 35)..."
               style={{ ...inputStyle, marginBottom: 0 }}
             />
           </label>
 
           {issueDropdownOpen && (() => {
-            const filtered = issues.filter((i) =>
-              i.number.startsWith(issueSearch.trim()) ||
-              i.number === issueSearch.trim()
-            ).slice(0, 30);
+            const search = issueSearch.trim().toLowerCase();
+            const filtered = issues.filter((i) => {
+              if (!search) return false;
+              const num = i.number.toLowerCase();
+              return num === search ||
+                num.startsWith(search) ||
+                // Match dual numbering e.g. "476" matches "35 (476)"
+                num.includes(search) ||
+                // Match by variant name
+                (i.variant_name && i.variant_name.toLowerCase().includes(search));
+            }).slice(0, 50);
+            if (filtered.length === 0 && search) return (
+              <div style={{ color: "#f59e0b", fontSize: 12, marginTop: 4 }}>
+                No #{search} found in this series.{" "}
+                <button
+                  onClick={() => {
+                    setIssueNumber(issueSearch);
+                    setSelectedSeries(null);
+                    setSelectedIssueId(null);
+                    setIssueDropdownOpen(false);
+                    setSeriesQuery(seriesQuery);
+                    // Trigger series re-search with the issue number
+                    const params = new URLSearchParams({ q: seriesQuery });
+                    params.set("issue", issueSearch);
+                    if (year) params.set("year", year);
+                    fetch(`/api/admin/scans/search-series?${params}`)
+                      .then(r => r.json())
+                      .then(data => setSeriesResults(data.results || []));
+                  }}
+                  style={{ background: "none", border: "none", color: "#f59e0b", cursor: "pointer", textDecoration: "underline", padding: 0, fontSize: 12 }}
+                >
+                  Search other series with #{search}
+                </button>
+              </div>
+            );
             if (filtered.length === 0) return null;
             return (
               <div

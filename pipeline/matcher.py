@@ -102,14 +102,15 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                 s.year_began,
                 s.year_ended,
                 p.name AS publisher_name,
-                i.price AS db_price
+                i.price AS db_price,
+                i.variant_name AS variant_name
             FROM issues i
             JOIN series s ON i.series_id = s.id
             LEFT JOIN publishers p ON s.publisher_id = p.id
             WHERE s.name ILIKE %s
               AND i.number = %s
             ORDER BY s.year_began ASC
-            LIMIT 20
+            LIMIT 50
         """
         cur.execute(query, (normalized, issue_number))
         rows = cur.fetchall()
@@ -141,14 +142,15 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                     s.year_began,
                     s.year_ended,
                     p.name AS publisher_name,
-                    i.price AS db_price
+                    i.price AS db_price,
+                    i.variant_name AS variant_name
                 FROM issues i
                 JOIN series s ON i.series_id = s.id
                 LEFT JOIN publishers p ON s.publisher_id = p.id
                 WHERE regexp_replace(lower(s.name), '[^\\w\\s]', ' ', 'g') ILIKE %s
                   AND i.number = %s
                 ORDER BY s.year_began ASC
-                LIMIT 20
+                LIMIT 50
             """
             cur.execute(punct_query, (f"%{stripped}%", issue_number))
             rows = cur.fetchall()
@@ -165,7 +167,8 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                     s.year_began,
                     s.year_ended,
                     p.name AS publisher_name,
-                    i.price AS db_price
+                    i.price AS db_price,
+                    i.variant_name AS variant_name
                 FROM issues i
                 JOIN series s ON i.series_id = s.id
                 LEFT JOIN publishers p ON s.publisher_id = p.id
@@ -173,7 +176,7 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                   AND i.number = %s
                   AND length(s.name) >= 3
                 ORDER BY length(s.name) DESC, s.year_began ASC
-                LIMIT 20
+                LIMIT 50
             """
             cur.execute(reverse_query, (normalized, issue_number))
             rows = cur.fetchall()
@@ -238,8 +241,15 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                 except ValueError:
                     pass
 
+        # Extract variant from front data for matching
+        extracted_variant = str(front_data.get("variant") or "").strip().lower()
+        # Normalize common variant labels
+        variant_map = {"cvr a": "cover a", "cvr b": "cover b", "cvr c": "cover c",
+                       "cvr ri": "cover ri", "ri": "cover ri"}
+        extracted_variant_norm = variant_map.get(extracted_variant, extracted_variant)
+
         for row in rows:
-            issue_id, series_id, series_name, db_issue_num, yr_began, yr_ended, pub_name, db_price = row
+            issue_id, series_id, series_name, db_issue_num, yr_began, yr_ended, pub_name, db_price, db_variant = row
             score = 0
 
             # Hard filter: skip candidates from wrong era/price
@@ -250,7 +260,7 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                     if db_usd_match:
                         try:
                             db_usd = float(db_usd_match.group(1))
-                            if abs(extracted_usd - db_usd) > 1.00:
+                            if abs(extracted_usd - db_usd) > 0.50:
                                 skip = True  # USD price mismatch
                         except ValueError:
                             pass
@@ -314,6 +324,19 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                             score += 10  # Close price
                     except ValueError:
                         pass
+
+            # Variant matching
+            if extracted_variant_norm and db_variant:
+                db_variant_norm = db_variant.strip().lower()
+                db_variant_norm = variant_map.get(db_variant_norm, db_variant_norm)
+                if extracted_variant_norm == db_variant_norm:
+                    score += 15  # Exact variant match
+                elif extracted_variant_norm in db_variant_norm or db_variant_norm in extracted_variant_norm:
+                    score += 10  # Partial variant match (e.g. "B" in "Cover B")
+            elif not extracted_variant_norm and db_variant:
+                # No variant extracted but DB has one — slight penalty for non-Cover-A
+                if "cover a" not in (db_variant or "").lower():
+                    score -= 5
 
             if score > best_score:
                 best_score = score

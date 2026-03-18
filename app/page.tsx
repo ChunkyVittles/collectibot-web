@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 type Result = {
@@ -9,6 +10,7 @@ type Result = {
   name: string;
   year_began?: number;
   year_ended?: number;
+  issue_count?: number;
   publisher?: string;
   slug?: string;
   birth_year?: number;
@@ -17,19 +19,39 @@ type Result = {
 };
 
 export default function Home() {
-  const [query, setQuery] = useState("");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const urlQuery = searchParams.get("q") || "";
+
+  const [query, setQuery] = useState(urlQuery);
   const [results, setResults] = useState<Result[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (query.trim().length < 2) return;
-
+  const doSearch = useCallback(async (q: string) => {
+    if (q.trim().length < 2) return;
     setLoading(true);
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    setSearched(true);
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
     const data = await res.json();
     setResults(data.results);
     setLoading(false);
+  }, []);
+
+  // Restore search from URL on mount / back navigation
+  useEffect(() => {
+    if (urlQuery && urlQuery.length >= 2) {
+      setQuery(urlQuery);
+      doSearch(urlQuery);
+    }
+  }, [urlQuery, doSearch]);
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (query.trim().length < 2) return;
+    // Push query to URL so back button works
+    router.push(`/?q=${encodeURIComponent(query)}`, { scroll: false });
+    doSearch(query);
   }
 
   function detail(r: Result): string {
@@ -41,6 +63,7 @@ export default function Home() {
           ? `${r.year_began}–${r.year_ended}`
           : `${r.year_began}–`;
         parts.push(years);
+        if (r.issue_count) parts.push(`${r.issue_count} issues`);
         return parts.join(" · ");
       }
       case "Creator":
@@ -135,7 +158,7 @@ export default function Home() {
         </ul>
       )}
 
-      {!loading && results.length === 0 && query.length >= 2 && (
+      {!loading && results.length === 0 && searched && (
         <p style={{ marginTop: 20, color: "#999" }}>No results</p>
       )}
     </div>

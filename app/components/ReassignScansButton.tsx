@@ -19,8 +19,9 @@ export default function ReassignScansButton({
   const [mode, setMode] = useState<"issue" | "series">("issue");
 
   // Issue number change (same series)
-  const [newIssueNumber, setNewIssueNumber] = useState(currentIssueNumber);
-  const [issueResults, setIssueResults] = useState<any[]>([]);
+  const [sameSeriesIssues, setSameSeriesIssues] = useState<any[]>([]);
+  const [selectedSameSeriesIssue, setSelectedSameSeriesIssue] = useState<number | null>(null);
+  const [sameSeriesLoaded, setSameSeriesLoaded] = useState(false);
 
   // Series change
   const [seriesQuery, setSeriesQuery] = useState("");
@@ -32,29 +33,13 @@ export default function ReassignScansButton({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Search for issue number in current series
-  const searchIssueInSeries = async (seriesId: number, num: string) => {
-    const res = await fetch(`/api/admin/scans/issues?seriesId=${seriesId}`);
+  // Load issues in current series for the dropdown
+  const loadSameSeriesIssues = async () => {
+    if (sameSeriesLoaded) return;
+    const res = await fetch(`/api/admin/scans/issues?seriesId=${currentSeriesId}`);
     const data = await res.json();
-    const allIssues = data.issues || [];
-    // Filter to matching issue numbers
-    const matches = allIssues.filter((i: any) =>
-      i.number === num || i.number === num.replace(/^#/, "")
-    );
-    return { matches, allIssues };
-  };
-
-  const handleIssueNumberChange = async () => {
-    setLoading(true);
-    setError("");
-    const { matches } = await searchIssueInSeries(currentSeriesId, newIssueNumber);
-    if (matches.length === 0) {
-      setError(`No issue #${newIssueNumber} found in ${currentSeries}`);
-      setLoading(false);
-      return;
-    }
-    const targetId = matches[0].id;
-    await doReassign(targetId);
+    setSameSeriesIssues(data.issues || []);
+    setSameSeriesLoaded(true);
   };
 
   const searchSeries = async () => {
@@ -99,7 +84,7 @@ export default function ReassignScansButton({
   if (!open) {
     return (
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => { setOpen(true); loadSameSeriesIssues(); }}
         style={{
           padding: "8px 16px",
           background: "none",
@@ -129,7 +114,7 @@ export default function ReassignScansButton({
       {/* Tab buttons */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button
-          onClick={() => setMode("issue")}
+          onClick={() => { setMode("issue"); loadSameSeriesIssues(); }}
           style={{
             padding: "6px 12px",
             background: mode === "issue" ? "#2563eb" : "#222",
@@ -178,37 +163,61 @@ export default function ReassignScansButton({
           <div style={{ color: "#888", fontSize: 12, marginBottom: 8 }}>
             Current: {currentSeries} #{currentIssueNumber}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={newIssueNumber}
-              onChange={(e) => setNewIssueNumber(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleIssueNumberChange()}
-              placeholder="New issue number..."
-              style={{
-                width: 120,
-                padding: 8,
-                background: "#222",
-                border: "1px solid #444",
-                borderRadius: 4,
-                color: "#fff",
-                fontSize: 16,
-              }}
-            />
+          {!sameSeriesLoaded ? (
             <button
-              onClick={handleIssueNumberChange}
-              disabled={loading || newIssueNumber === currentIssueNumber}
+              onClick={loadSameSeriesIssues}
               style={{
                 padding: "8px 16px",
-                background: newIssueNumber !== currentIssueNumber ? "#2563eb" : "#333",
+                background: "#333",
                 border: "none",
                 borderRadius: 4,
                 color: "#fff",
-                cursor: newIssueNumber !== currentIssueNumber ? "pointer" : "default",
+                cursor: "pointer",
               }}
             >
-              {loading ? "Moving..." : "Move to this issue"}
+              Load issues...
             </button>
-          </div>
+          ) : (
+            <>
+              <select
+                value={selectedSameSeriesIssue || ""}
+                onChange={(e) => setSelectedSameSeriesIssue(Number(e.target.value))}
+                style={{
+                  width: "100%",
+                  padding: 8,
+                  background: "#222",
+                  border: "1px solid #444",
+                  borderRadius: 4,
+                  color: "#fff",
+                }}
+              >
+                <option value="">Select issue...</option>
+                {sameSeriesIssues.map((i: any) => (
+                  <option key={i.id} value={i.id} disabled={i.id === issueId}>
+                    #{i.number}
+                    {i.variant_name ? ` — ${i.variant_name}` : ""}
+                    {i.publication_date ? ` (${i.publication_date})` : ""}
+                    {i.id === issueId ? " (current)" : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => selectedSameSeriesIssue && doReassign(selectedSameSeriesIssue)}
+                disabled={!selectedSameSeriesIssue || loading}
+                style={{
+                  marginTop: 12,
+                  padding: "8px 16px",
+                  background: selectedSameSeriesIssue ? "#2563eb" : "#333",
+                  border: "none",
+                  borderRadius: 4,
+                  color: "#fff",
+                  cursor: selectedSameSeriesIssue ? "pointer" : "default",
+                }}
+              >
+                {loading ? "Moving..." : "Move Scans Here"}
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -305,8 +314,9 @@ export default function ReassignScansButton({
                 <option value="">Select issue...</option>
                 {issues.map((i: any) => (
                   <option key={i.id} value={i.id}>
-                    #{i.number}{" "}
-                    {i.publication_date ? `(${i.publication_date})` : ""}
+                    #{i.number}
+                    {i.variant_name ? ` — ${i.variant_name}` : ""}
+                    {i.publication_date ? ` (${i.publication_date})` : ""}
                   </option>
                 ))}
               </select>
