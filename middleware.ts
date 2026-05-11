@@ -1,20 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Paths that require the admin auth cookie. Everything else is public so
+// search engines can crawl issue/series/creator/postcard pages.
+const PROTECTED_PREFIXES = ["/admin/", "/api/admin/"];
+
+// Destructive scan endpoints that live under /api/scans/ but mutate state.
+// Listed explicitly so /api/scans/recent and /api/scans/image stay public.
+const PROTECTED_SCAN_ENDPOINTS = new Set([
+  "/api/scans/delete",
+  "/api/scans/swap",
+  "/api/scans/reassign",
+]);
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow login page, login API, and public scan endpoints through
-  if (pathname === "/login" || pathname === "/api/login" || pathname.startsWith("/api/scans/") || pathname.startsWith("/postcards")) {
+  const needsAuth =
+    PROTECTED_PREFIXES.some((p) => pathname.startsWith(p)) ||
+    PROTECTED_SCAN_ENDPOINTS.has(pathname);
+
+  if (!needsAuth) {
     return NextResponse.next();
   }
 
-  // Check for auth cookie
   const auth = request.cookies.get("cb_auth");
   if (auth?.value === "Testing123") {
     return NextResponse.next();
   }
 
-  // Redirect to login
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const loginUrl = new URL("/login", request.url);
   return NextResponse.redirect(loginUrl);
 }

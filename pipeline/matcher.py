@@ -156,6 +156,17 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             rows = cur.fetchall()
 
         if not rows:
+            # Try no-space variant: covers "grim JACK" → "Grimjack" where the
+            # cover renders a single-word title with a visual gap.
+            no_space = re.sub(r"\s+", "", normalized)
+            if no_space and no_space != normalized:
+                cur.execute(query, (no_space, issue_number))
+                rows = cur.fetchall()
+                if not rows:
+                    cur.execute(query, (f"%{no_space}%", issue_number))
+                    rows = cur.fetchall()
+
+        if not rows:
             # Try reverse: find series whose name appears within the extracted title
             # e.g. extracted "SPEEDBALL THE MASKED MARVEL" should match series "Speedball"
             reverse_query = """

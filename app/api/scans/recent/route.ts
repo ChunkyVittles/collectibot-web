@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import pool from "@/app/lib/db";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   try {
     // Get matched scans
@@ -47,7 +50,9 @@ export async function GET() {
       .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
       .slice(0, 10);
 
-    return NextResponse.json(all);
+    return NextResponse.json(all, {
+      headers: { "Cache-Control": "no-store, must-revalidate" },
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

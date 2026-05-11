@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import DeleteScansButton from "@/app/components/DeleteScansButton";
+import SwapCoversButton from "@/app/components/SwapCoversButton";
 import ReassignScansButton from "@/app/components/ReassignScansButton";
 import SetHeroButton from "@/app/components/SetHeroButton";
 import IssueCoverSection from "@/app/components/IssueCoverSection";
@@ -10,6 +11,49 @@ import IssueCoverSection from "@/app/components/IssueCoverSection";
 type Props = {
   params: Promise<{ id: string }>;
 };
+
+export async function generateMetadata({ params }: Props) {
+  const { id } = await params;
+  const result = await pool.query<{
+    number: string;
+    publication_date: string | null;
+    key_date: string | null;
+    variant_name: string | null;
+    price: string | null;
+    series_name: string;
+    publisher_name: string | null;
+    year_began: number | null;
+  }>(
+    `SELECT i.number, i.publication_date, i.key_date, i.variant_name, i.price,
+            s.name AS series_name, p.name AS publisher_name, s.year_began
+     FROM issues i
+     JOIN series s ON i.series_id = s.id
+     LEFT JOIN publishers p ON s.publisher_id = p.id
+     WHERE i.id = $1`,
+    [id]
+  );
+  if (result.rows.length === 0) return { title: "Issue Not Found - Collectibot" };
+  const i = result.rows[0];
+
+  const date = i.publication_date || i.key_date || "";
+  const yearMatch = date.match(/(\d{4})/);
+  const year = yearMatch ? yearMatch[1] : i.year_began ? String(i.year_began) : "";
+  const dateLabel = i.publication_date || (year ? year : "");
+
+  const titleBits = [`${i.series_name} #${i.number}`];
+  if (dateLabel) titleBits.push(`(${dateLabel})`);
+  if (i.variant_name) titleBits.push(`${i.variant_name}`);
+  if (i.publisher_name) titleBits.push(`- ${i.publisher_name}`);
+  const title = `${titleBits.join(" ")} - Collectibot`;
+
+  const descBits = [`${i.series_name} #${i.number}`];
+  if (dateLabel) descBits.push(`published ${dateLabel}`);
+  if (i.publisher_name) descBits.push(`by ${i.publisher_name}`);
+  if (i.price) descBits.push(`cover price ${i.price}`);
+  const description = `${descBits.join(", ")}. Covers, creators, and details.`;
+
+  return { title, description };
+}
 
 export default async function IssuePage({ params }: Props) {
   const { id } = await params;
@@ -73,6 +117,7 @@ export default async function IssuePage({ params }: Props) {
       {isAdmin && (hasFront || hasBack) && (
         <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", marginTop: 16 }}>
           <DeleteScansButton issueId={issue.id} />
+          {hasFront && hasBack && <SwapCoversButton issueId={issue.id} />}
           <ReassignScansButton
             issueId={issue.id}
             currentSeries={issue.series_name}

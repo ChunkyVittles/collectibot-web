@@ -199,7 +199,7 @@ function ScanCard({
   };
 
   const handleReject = async () => {
-    if (!confirm("Reject this scan? Files will be moved to /rejected/")) return;
+    if (!confirm("Delete this scan and its images? This cannot be undone.")) return;
     setLoading(true);
     setStatus("Rejecting...");
     try {
