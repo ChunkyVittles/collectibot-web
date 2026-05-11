@@ -1,7 +1,11 @@
+// TODO: replace structured About with AI-generated bio once the bio pipeline
+// ships. See docs/followups/ai-bios.md.
+
 import pool from "@/app/lib/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CreatorFilters from "./CreatorFilters";
+import CreatorAbout from "./CreatorAbout";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -13,7 +17,6 @@ type CreatorRow = {
   id: number;
   name: string;
   sort_name: string | null;
-  bio: string | null;
   birth_year: number | null;
   birth_city: string | null;
   birth_country: string | null;
@@ -86,9 +89,8 @@ export async function generateMetadata({ params }: Props) {
     birth_year: number | null;
     death_year: number | null;
     birth_country: string | null;
-    bio: string | null;
   }>(
-    `SELECT name, birth_year, death_year, birth_country, bio
+    `SELECT name, birth_year, death_year, birth_country
      FROM creators WHERE id = $1`,
     [id]
   );
@@ -112,7 +114,7 @@ export default async function CreatorPage({ params }: Props) {
   const { id } = await params;
 
   const creatorRes = await pool.query<CreatorRow>(
-    `SELECT id, name, sort_name, bio, birth_year, birth_city, birth_country, death_year
+    `SELECT id, name, sort_name, birth_year, birth_city, birth_country, death_year
      FROM creators WHERE id = $1`,
     [id]
   );
@@ -162,6 +164,19 @@ export default async function CreatorPage({ params }: Props) {
      WHERE ic.creator_id = $1
      GROUP BY p.id, p.name
      ORDER BY issue_count DESC, p.name`,
+    [id]
+  );
+
+  // Top series by distinct issue credit count.
+  const topSeriesRes = await pool.query<{ id: number; name: string; credit_count: number }>(
+    `SELECT s.id, s.name, count(DISTINCT i.id)::int AS credit_count
+     FROM issue_credits ic
+     JOIN issues i ON ic.issue_id = i.id
+     JOIN series s ON i.series_id = s.id
+     WHERE ic.creator_id = $1
+     GROUP BY s.id, s.name
+     ORDER BY credit_count DESC, s.name
+     LIMIT 5`,
     [id]
   );
 
@@ -229,6 +244,24 @@ export default async function CreatorPage({ params }: Props) {
   const collaborators = collaboratorsRes.rows;
   const publishers = publishersRes.rows;
 
+  // Active span and peak decade derived from our credits.
+  let firstYear: number | null = null;
+  let lastYear: number | null = null;
+  let peakDecade: string | null = null;
+  let peakCount = 0;
+  for (const [label, items] of decades.entries()) {
+    if (items.length > peakCount) {
+      peakCount = items.length;
+      peakDecade = label;
+    }
+  }
+  for (const c of merged) {
+    const y = yearFromKeyDate(c.key_date);
+    if (y == null) continue;
+    if (firstYear == null || y < firstYear) firstYear = y;
+    if (lastYear == null || y > lastYear) lastYear = y;
+  }
+
   return (
     <div style={{ maxWidth: 800, margin: "40px auto", padding: "0 20px", fontFamily: "system-ui" }}>
       <Link href="/" style={{ color: "#666", textDecoration: "none" }}>
@@ -243,67 +276,19 @@ export default async function CreatorPage({ params }: Props) {
       <p style={{ color: "#999", margin: "0 0 16px 0" }}>
         {totalCredits.toLocaleString()} credited issues · {creditsRes.rows.length.toLocaleString()} role credits
       </p>
-      {creator.bio && (
-        <p style={{ color: "#bbb", lineHeight: 1.5, margin: "0 0 24px 0", maxWidth: 600 }}>
-          {creator.bio}
-        </p>
-      )}
-
-      {/* Publishers worked for */}
-      {publishers.length > 0 && (
-        <section style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 18, marginBottom: 8 }}>Publishers</h2>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {publishers.slice(0, 30).map((p) => (
-              <li key={p.id}>
-                <Link
-                  href={`/publisher/${p.id}`}
-                  style={{
-                    display: "inline-block",
-                    padding: "4px 10px",
-                    border: "1px solid #333",
-                    borderRadius: 4,
-                    fontSize: 13,
-                    textDecoration: "none",
-                    color: "inherit",
-                  }}
-                >
-                  {p.name}
-                  <span style={{ color: "#888", marginLeft: 6 }}>{p.issue_count.toLocaleString()}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Frequent collaborators */}
-      {collaborators.length > 0 && (
-        <section style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 18, marginBottom: 8 }}>Frequent collaborators</h2>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {collaborators.map((c) => (
-              <li key={c.id}>
-                <Link
-                  href={`/creator/${c.id}`}
-                  style={{
-                    display: "inline-block",
-                    padding: "4px 10px",
-                    border: "1px solid #333",
-                    borderRadius: 4,
-                    fontSize: 13,
-                    textDecoration: "none",
-                    color: "inherit",
-                  }}
-                >
-                  {c.name}
-                  <span style={{ color: "#888", marginLeft: 6 }}>{c.shared_count.toLocaleString()}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {/* Structured "About" derived from our own data — replaces the GCD
+          bio paragraph and the old standalone publishers / collaborators
+          tag clouds. Returns null when there's not enough data. */}
+      <CreatorAbout
+        totalIssues={totalCredits}
+        firstYear={firstYear}
+        lastYear={lastYear}
+        peakDecade={peakDecade}
+        publisherCount={publishers.length}
+        topPublishers={publishers.slice(0, 3).map((p) => ({ id: p.id, name: p.name }))}
+        topCollaborators={collaborators.slice(0, 3).map((c) => ({ id: c.id, name: c.name }))}
+        topSeries={topSeriesRes.rows.slice(0, 3).map((s) => ({ id: s.id, name: s.name }))}
+      />
 
       {/* Filter island (client) */}
       <CreatorFilters
