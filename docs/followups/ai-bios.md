@@ -46,21 +46,47 @@ failed batch can be reattempted without dupes.
 
 ## Prompt direction
 
-Synthesize original prose focused on the work in our database. Do not
-quote sources verbatim. 2–3 paragraphs. The structured facts are the
-spine; the GCD bio and Wikipedia article are background context for
-voice and accuracy. Reject output that exceeds N% similarity to either
-source — auto-retry with stricter instruction.
+Synthesize original prose focused on the work in our database. 2–3
+paragraphs. The structured facts are the spine; the GCD bio and
+Wikipedia article are background context for voice and accuracy.
+
+Hard rules the prompt must enforce:
+
+- **Never copy GCD or Wikipedia prose verbatim.** Rewrite in our own
+  voice. Reject output exceeding N% similarity to either source via
+  shingled-substring check; auto-retry with stricter instruction.
+- **Names of works are facts and must stay accurate.** Series titles,
+  publisher names, creator names, character names, dates — these are
+  not "prose" to rewrite, they're identifiers. Don't paraphrase them.
+- **No external links in body prose.** No `<a href="https://...">`
+  anywhere in the rendered bio body. Do not link to Wikipedia, GCD,
+  or any outside site.
+- **Internal Collectibot links are encouraged.** When the prose names
+  an entity that has a Collectibot page (creator, series, publisher,
+  character), wrap the name in a `<Link href="/...">`. The prompt
+  output should be plain text with entity markers (e.g.
+  `{{creator:308}}Jack Kirby{{/creator}}`) that a post-processor
+  converts to React `<Link>` elements at render time.
+- **Factually accurate or omitted.** If a fact can't be cross-verified
+  between sources or against our structured data, leave it out. Don't
+  hallucinate first appearances, awards, or dates.
+- **No verbatim quotes.** No block quotes from any source.
 
 ## Output rendering
 
 In `app/creator/[id]/page.tsx`:
 
 - When `creators.bio_rewritten` is non-null, render it as prose
-  paragraphs above the credits table.
+  paragraphs above the credits table. Pass through a small
+  post-processor that converts entity markers (`{{creator:308}}...`)
+  into `<Link>` elements pointing at Collectibot pages.
 - Always render `<CreatorAbout />` underneath the prose (or as the
   sole content when `bio_rewritten` is null). The structured About is
   the permanent fallback — never deprecated.
+- Attribution: if any non-trivial fact came from GCD or Wikipedia,
+  render a small "Sources" line at the bottom of the bio block,
+  outside the prose itself, linking to the source pages. This keeps
+  the body link-free while honoring CC-BY / fair-use expectations.
 
 ## Admin tooling
 
