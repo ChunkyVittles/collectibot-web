@@ -122,6 +122,10 @@ export default async function CreatorPage({ params }: Props) {
   const creator = creatorRes.rows[0];
 
   // All credits for this creator, with publisher info and any key-issue note.
+  // Hard cap at 3000 rows — prolific writers like Roy Thomas blow the
+  // Cloudflare Worker memory ceiling when we render ~7000 credit rows of
+  // HTML. Limiting by key_date DESC keeps the most-recent (likely searched)
+  // work first.
   const creditsRes = await pool.query<CreditRow>(
     `SELECT ic.credit_type,
             i.id AS issue_id, i.number, i.key_date,
@@ -137,43 +141,55 @@ export default async function CreatorPage({ params }: Props) {
        WHERE issue_id = i.id AND key_comment_1 IS NOT NULL LIMIT 1
      ) ki ON true
      WHERE ic.creator_id = $1
-     ORDER BY i.key_date ASC NULLS LAST, s.name, i.number`,
+     ORDER BY i.key_date DESC NULLS LAST, s.name, i.number
+     LIMIT 3000`,
     [id]
   );
 
-  // Frequent collaborators: top 10 creators co-credited on the same issues.
+  // Frequent collaborators: pre-filter to this creator's issues via a CTE,
+  // then join only over that small set instead of doing a self-join on
+  // the whole 5.7M-row issue_credits table.
   const collaboratorsRes = await pool.query<CollaboratorRow>(
-    `SELECT c.id, c.name, count(DISTINCT ic2.issue_id)::int AS shared_count
-     FROM issue_credits ic1
-     JOIN issue_credits ic2 ON ic1.issue_id = ic2.issue_id AND ic1.creator_id <> ic2.creator_id
-     JOIN creators c ON ic2.creator_id = c.id
-     WHERE ic1.creator_id = $1
+    `WITH my_issues AS (
+       SELECT DISTINCT issue_id FROM issue_credits WHERE creator_id = $1
+     )
+     SELECT c.id, c.name, count(DISTINCT ic.issue_id)::int AS shared_count
+     FROM issue_credits ic
+     JOIN my_issues mi ON ic.issue_id = mi.issue_id
+     JOIN creators c ON ic.creator_id = c.id
+     WHERE ic.creator_id <> $1
      GROUP BY c.id, c.name
      ORDER BY shared_count DESC, c.name
      LIMIT 10`,
     [id]
   );
 
-  // Publishers worked for: distinct issue count per publisher.
+  // Publishers worked for: same CTE optimization — narrow to this
+  // creator's issues first, then join out.
   const publishersRes = await pool.query<PublisherCountRow>(
-    `SELECT p.id, p.name, count(DISTINCT i.id)::int AS issue_count
-     FROM issue_credits ic
-     JOIN issues i ON ic.issue_id = i.id
-     JOIN series s ON i.series_id = s.id
-     JOIN publishers p ON s.publisher_id = p.id
-     WHERE ic.creator_id = $1
+    `WITH my_issues AS (
+       SELECT DISTINCT issue_id FROM issue_credits WHERE creator_id = $1
+     )
+     SELECT p.id, p.name, count(DISTINCT mi.issue_id)::int AS issue_count
+     FROM my_issues mi
+     JOIN issues i ON i.id = mi.issue_id
+     JOIN series s ON s.id = i.series_id
+     JOIN publishers p ON p.id = s.publisher_id
      GROUP BY p.id, p.name
-     ORDER BY issue_count DESC, p.name`,
+     ORDER BY issue_count DESC, p.name
+     LIMIT 30`,
     [id]
   );
 
-  // Top series by distinct issue credit count.
+  // Top series by distinct issue credit count. CTE + LIMIT.
   const topSeriesRes = await pool.query<{ id: number; name: string; credit_count: number }>(
-    `SELECT s.id, s.name, count(DISTINCT i.id)::int AS credit_count
-     FROM issue_credits ic
-     JOIN issues i ON ic.issue_id = i.id
-     JOIN series s ON i.series_id = s.id
-     WHERE ic.creator_id = $1
+    `WITH my_issues AS (
+       SELECT DISTINCT issue_id FROM issue_credits WHERE creator_id = $1
+     )
+     SELECT s.id, s.name, count(DISTINCT mi.issue_id)::int AS credit_count
+     FROM my_issues mi
+     JOIN issues i ON i.id = mi.issue_id
+     JOIN series s ON s.id = i.series_id
      GROUP BY s.id, s.name
      ORDER BY credit_count DESC, s.name
      LIMIT 5`,
