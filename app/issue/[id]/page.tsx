@@ -1,6 +1,6 @@
 import pool from "@/app/lib/db";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { cookies } from "next/headers";
 import DeleteScansButton from "@/app/components/DeleteScansButton";
 import SwapCoversButton from "@/app/components/SwapCoversButton";
@@ -14,8 +14,26 @@ type Props = {
 
 export const revalidate = 3600;
 
+// Slug overrides for individual issues. Single-issue pilot for the slug
+// migration — if the URL param matches a slug here, resolve it to the
+// numeric id and render. If the URL param IS a numeric id that has a
+// slug, 308-redirect to the slug URL so search engines pick up the
+// canonical form. Will be replaced with a DB column when the full
+// migration runs.
+const SLUG_TO_ID: Record<string, string> = {
+  "conan-the-barbarian-1-marvel-1970": "23540",
+};
+const ID_TO_SLUG: Record<string, string> = Object.fromEntries(
+  Object.entries(SLUG_TO_ID).map(([slug, id]) => [id, slug]),
+);
+
+function resolveIssueId(param: string): string {
+  return SLUG_TO_ID[param] ?? param;
+}
+
 export async function generateMetadata({ params }: Props) {
-  const { id } = await params;
+  const { id: param } = await params;
+  const id = resolveIssueId(param);
   const result = await pool.query<{
     number: string;
     publication_date: string | null;
@@ -54,7 +72,14 @@ export async function generateMetadata({ params }: Props) {
   if (i.price) descBits.push(`cover price ${i.price}`);
   const description = `${descBits.join(", ")}. Covers, creators, and details.`;
 
-  return { title, description };
+  const canonicalSlug = ID_TO_SLUG[id];
+  return {
+    title,
+    description,
+    ...(canonicalSlug
+      ? { alternates: { canonical: `/issue/${canonicalSlug}` } }
+      : {}),
+  };
 }
 
 // Display order + friendly labels for GCD credit_type values. Anything not
@@ -88,7 +113,15 @@ type KeyCommentRow = {
 };
 
 export default async function IssuePage({ params }: Props) {
-  const { id } = await params;
+  const { id: param } = await params;
+
+  // If accessed by numeric id and we have a slug for it, 308-redirect
+  // to the canonical slug URL so search engines see only one form.
+  if (/^\d+$/.test(param) && ID_TO_SLUG[param]) {
+    permanentRedirect(`/issue/${ID_TO_SLUG[param]}`);
+  }
+
+  const id = resolveIssueId(param);
 
   const issueRes = await pool.query(
     `SELECT i.id, i.number, i.volume, i.series_id, i.key_date, i.publication_date,
