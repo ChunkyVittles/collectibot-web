@@ -80,6 +80,13 @@ export async function generateMetadata({ params }: Props) {
   // Index-eligible only when there's an actual front cover scan on the page
   // — overrides the site-wide noindex default from app/layout.tsx.
   const indexEligible = i.has_front_scan;
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://collectibot.com";
+  const pagePath = canonicalSlug ? `/issue/${canonicalSlug}` : `/issue/${id}`;
+  const ogImageUrl = i.has_front_scan
+    ? `${siteUrl}/api/scans/image?issue=${id}&side=front`
+    : undefined;
+
   return {
     title,
     description,
@@ -95,6 +102,28 @@ export async function generateMetadata({ params }: Props) {
           },
         }
       : {}),
+    openGraph: {
+      title,
+      description,
+      url: `${siteUrl}${pagePath}`,
+      type: "article",
+      ...(ogImageUrl
+        ? {
+            images: [
+              {
+                url: ogImageUrl,
+                alt: `${i.series_name} #${i.number} front cover`,
+              },
+            ],
+          }
+        : {}),
+    },
+    twitter: {
+      card: ogImageUrl ? "summary_large_image" : "summary",
+      title,
+      description,
+      ...(ogImageUrl ? { images: [ogImageUrl] } : {}),
+    },
   };
 }
 
@@ -224,8 +253,98 @@ export default async function IssuePage({ params }: Props) {
   );
   const keyNotes = keyRes.rows[0] || null;
 
+  // JSON-LD ComicIssue structured data — gives Google explicit semantic
+  // hooks for series, publisher, publication date, creative team.
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://collectibot.com";
+  const canonicalSlugForLd = ID_TO_SLUG[String(issue.id)];
+  const pageUrl = `${siteUrl}${canonicalSlugForLd ? `/issue/${canonicalSlugForLd}` : `/issue/${issue.id}`}`;
+  const writers = creditsByType.get("script") ?? [];
+  const pencillers = creditsByType.get("pencils") ?? [];
+  const inkers = creditsByType.get("inks") ?? [];
+  const colorists = creditsByType.get("colors") ?? [];
+  const letterers = creditsByType.get("letters") ?? [];
+  const jsonLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "ComicIssue",
+    "@id": pageUrl,
+    name: `${issue.series_name} #${issue.number}`,
+    issueNumber: issue.number,
+    url: pageUrl,
+    ...(issue.publication_date ? { datePublished: issue.publication_date } : {}),
+    ...(issue.page_count ? { numberOfPages: Number(issue.page_count) } : {}),
+    isPartOf: {
+      "@type": "ComicSeries",
+      "@id": `${siteUrl}/series/${issue.series_id}`,
+      name: issue.series_name,
+      url: `${siteUrl}/series/${issue.series_id}`,
+    },
+    ...(issue.publisher_id && issue.publisher_name
+      ? {
+          publisher: {
+            "@type": "Organization",
+            "@id": `${siteUrl}/publisher/${issue.publisher_id}`,
+            name: issue.publisher_name,
+            url: `${siteUrl}/publisher/${issue.publisher_id}`,
+          },
+        }
+      : {}),
+    ...(writers.length > 0
+      ? {
+          author: writers.map((w) => ({
+            "@type": "Person",
+            "@id": `${siteUrl}/creator/${w.id}`,
+            name: w.name,
+            url: `${siteUrl}/creator/${w.id}`,
+          })),
+        }
+      : {}),
+    ...(pencillers.length + inkers.length + colorists.length + letterers.length > 0
+      ? {
+          contributor: [
+            ...pencillers.map((c) => ({
+              "@type": "Person",
+              "@id": `${siteUrl}/creator/${c.id}`,
+              name: c.name,
+              url: `${siteUrl}/creator/${c.id}`,
+              roleName: "Penciller",
+            })),
+            ...inkers.map((c) => ({
+              "@type": "Person",
+              "@id": `${siteUrl}/creator/${c.id}`,
+              name: c.name,
+              url: `${siteUrl}/creator/${c.id}`,
+              roleName: "Inker",
+            })),
+            ...colorists.map((c) => ({
+              "@type": "Person",
+              "@id": `${siteUrl}/creator/${c.id}`,
+              name: c.name,
+              url: `${siteUrl}/creator/${c.id}`,
+              roleName: "Colorist",
+            })),
+            ...letterers.map((c) => ({
+              "@type": "Person",
+              "@id": `${siteUrl}/creator/${c.id}`,
+              name: c.name,
+              url: `${siteUrl}/creator/${c.id}`,
+              roleName: "Letterer",
+            })),
+          ],
+        }
+      : {}),
+    ...(hasFront
+      ? {
+          image: `${siteUrl}/api/scans/image?issue=${issue.id}&side=front`,
+        }
+      : {}),
+  };
+
   return (
     <div style={{ maxWidth: 700, margin: "40px auto", padding: "0 20px", fontFamily: "system-ui" }}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <Link href={`/series/${issue.series_id}`} style={{ color: "#666", textDecoration: "none" }}>
         &larr; {issue.series_name}
       </Link>
@@ -250,6 +369,8 @@ export default async function IssuePage({ params }: Props) {
         issueId={issue.id}
         seriesName={issue.series_name}
         issueNumber={issue.number}
+        publisherName={issue.publisher_name}
+        publicationDate={issue.publication_date || issue.key_date}
         hasFront={hasFront}
         hasBack={hasBack}
         isAdmin={isAdmin}

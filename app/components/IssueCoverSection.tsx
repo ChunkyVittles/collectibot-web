@@ -8,6 +8,8 @@ type Props = {
   issueId: number;
   seriesName: string;
   issueNumber: string;
+  publisherName?: string | null;
+  publicationDate?: string | null;
   hasFront: boolean;
   hasBack: boolean;
   isAdmin: boolean;
@@ -17,10 +19,15 @@ export default function IssueCoverSection({
   issueId,
   seriesName,
   issueNumber,
+  publisherName,
+  publicationDate,
   hasFront: initialHasFront,
   hasBack: initialHasBack,
   isAdmin,
 }: Props) {
+  const context = [publisherName, publicationDate].filter(Boolean).join(", ");
+  const frontAlt = `${seriesName} #${issueNumber} front cover${context ? ` — ${context}` : ""}`;
+  const backAlt = `${seriesName} #${issueNumber} back cover${context ? ` — ${context}` : ""}`;
   const [cacheBust, setCacheBust] = useState(Date.now());
   const [hasFront, setHasFront] = useState(initialHasFront);
   const [hasBack, setHasBack] = useState(initialHasBack);
@@ -39,7 +46,7 @@ export default function IssueCoverSection({
           {hasFront ? (
             <ImageLightbox
               src={`/api/scans/image?issue=${issueId}&side=front&t=${cacheBust}`}
-              alt={`${seriesName} #${issueNumber} front cover`}
+              alt={frontAlt}
               style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
             />
           ) : (
@@ -66,7 +73,7 @@ export default function IssueCoverSection({
           {hasBack ? (
             <ImageLightbox
               src={`/api/scans/image?issue=${issueId}&side=back&t=${cacheBust}`}
-              alt={`${seriesName} #${issueNumber} back cover`}
+              alt={backAlt}
               style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
             />
           ) : (
