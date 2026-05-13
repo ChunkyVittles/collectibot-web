@@ -10,16 +10,34 @@ type Props = {
 
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
-  const result = await pool.query<{ description: string | null; postmark_city: string | null; postmark_state: string | null }>(
-    `SELECT description, postmark_city, postmark_state FROM postcards WHERE id = $1`,
+  const result = await pool.query<{
+    description: string | null;
+    postmark_city: string | null;
+    postmark_state: string | null;
+    has_scan: boolean;
+  }>(
+    `SELECT description, postmark_city, postmark_state,
+            EXISTS(SELECT 1 FROM scans WHERE postcard_id = $1 AND scan_type = 'postcard_front') AS has_scan
+     FROM postcards WHERE id = $1`,
     [id]
   );
   if (result.rows.length === 0) return { title: "Postcard Not Found" };
   const pc = result.rows[0];
   const location = [pc.postmark_city, pc.postmark_state].filter(Boolean).join(", ");
+  // Index-eligible only when a front scan exists — overrides site-wide
+  // noindex default from app/layout.tsx.
   return {
     title: `${pc.description || "Vintage Postcard"}${location ? ` - ${location}` : ""} - Collectibot`,
     description: pc.description || "Vintage postcard scan",
+    ...(pc.has_scan
+      ? {
+          robots: {
+            index: true,
+            follow: true,
+            googleBot: { index: true, follow: true },
+          },
+        }
+      : {}),
   };
 }
 

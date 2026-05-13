@@ -43,9 +43,11 @@ export async function generateMetadata({ params }: Props) {
     series_name: string;
     publisher_name: string | null;
     year_began: number | null;
+    has_front_scan: boolean;
   }>(
     `SELECT i.number, i.publication_date, i.key_date, i.variant_name, i.price,
-            s.name AS series_name, p.name AS publisher_name, s.year_began
+            s.name AS series_name, p.name AS publisher_name, s.year_began,
+            EXISTS(SELECT 1 FROM scans WHERE issue_id = i.id AND scan_type = 'front_cover') AS has_front_scan
      FROM issues i
      JOIN series s ON i.series_id = s.id
      LEFT JOIN publishers p ON s.publisher_id = p.id
@@ -73,11 +75,23 @@ export async function generateMetadata({ params }: Props) {
   const description = `${descBits.join(", ")}. Covers, creators, and details.`;
 
   const canonicalSlug = ID_TO_SLUG[id];
+  // Index-eligible only when there's an actual front cover scan on the page
+  // — overrides the site-wide noindex default from app/layout.tsx.
+  const indexEligible = i.has_front_scan;
   return {
     title,
     description,
     ...(canonicalSlug
       ? { alternates: { canonical: `/issue/${canonicalSlug}` } }
+      : {}),
+    ...(indexEligible
+      ? {
+          robots: {
+            index: true,
+            follow: true,
+            googleBot: { index: true, follow: true },
+          },
+        }
       : {}),
   };
 }
