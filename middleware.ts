@@ -1,30 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Paths that require the admin auth cookie. Everything else is public so
-// search engines can crawl issue/series/creator/postcard pages.
-const PROTECTED_PREFIXES = ["/admin/", "/api/admin/"];
-
-// Destructive scan endpoints that live under /api/scans/ but mutate state.
-// Listed explicitly so /api/scans/recent and /api/scans/image stay public.
-const PROTECTED_SCAN_ENDPOINTS = new Set([
-  "/api/scans/delete",
-  "/api/scans/swap",
-  "/api/scans/reassign",
-]);
+// Pre-launch access wall: every page and API request requires the
+// cb_auth cookie set to the value of process.env.SITE_PASSWORD. The
+// password is server-side only — never exposed to clients, never
+// hardcoded in this file. When we're ready to open the site to the
+// public, this whole guard goes away and we revert to the
+// previously-shipped "public by default, /admin gated" model.
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const needsAuth =
-    PROTECTED_PREFIXES.some((p) => pathname.startsWith(p)) ||
-    PROTECTED_SCAN_ENDPOINTS.has(pathname);
-
-  if (!needsAuth) {
+  // The login page + the API that issues the cookie must stay reachable.
+  if (pathname === "/login" || pathname === "/api/login") {
     return NextResponse.next();
   }
 
+  const expected = process.env.SITE_PASSWORD;
   const auth = request.cookies.get("cb_auth");
-  if (auth?.value === "Testing123") {
+  if (expected && auth?.value === expected) {
     return NextResponse.next();
   }
 
