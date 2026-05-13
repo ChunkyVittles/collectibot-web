@@ -6,6 +6,7 @@ import ImageLightbox from "./ImageLightbox";
 
 type Props = {
   issueId: number;
+  issueSlug?: string | null;
   seriesName: string;
   issueNumber: string;
   publisherName?: string | null;
@@ -17,6 +18,7 @@ type Props = {
 
 export default function IssueCoverSection({
   issueId,
+  issueSlug,
   seriesName,
   issueNumber,
   publisherName,
@@ -32,6 +34,16 @@ export default function IssueCoverSection({
   const [hasFront, setHasFront] = useState(initialHasFront);
   const [hasBack, setHasBack] = useState(initialHasBack);
 
+  // When the issue has a slug, use the descriptive image URL — keeps
+  // the keywords (series, number, publisher, year, "front cover" /
+  // "back cover") in the URL path itself for SEO.
+  const frontSrc = issueSlug
+    ? `/api/scans/image/${issueSlug}-front-cover.webp?t=${cacheBust}`
+    : `/api/scans/image?issue=${issueId}&side=front&t=${cacheBust}`;
+  const backSrc = issueSlug
+    ? `/api/scans/image/${issueSlug}-back-cover.webp?t=${cacheBust}`
+    : `/api/scans/image?issue=${issueId}&side=back&t=${cacheBust}`;
+
   function handleUploaded(side: "front" | "back") {
     setCacheBust(Date.now());
     if (side === "front") setHasFront(true);
@@ -42,10 +54,10 @@ export default function IssueCoverSection({
     <>
       <div style={{ display: "flex", gap: 20, marginTop: 24 }}>
         <div style={{ flex: 1, textAlign: "center" }}>
-          <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Front Cover</div>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "#ccc", margin: "0 0 8px 0" }}>Front Cover</h2>
           {hasFront ? (
             <ImageLightbox
-              src={`/api/scans/image?issue=${issueId}&side=front&t=${cacheBust}`}
+              src={frontSrc}
               alt={frontAlt}
               style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
             />
@@ -69,10 +81,10 @@ export default function IssueCoverSection({
           )}
         </div>
         <div style={{ flex: 1, textAlign: "center" }}>
-          <div style={{ color: "#888", fontSize: 12, marginBottom: 4 }}>Back Cover</div>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "#ccc", margin: "0 0 8px 0" }}>Back Cover</h2>
           {hasBack ? (
             <ImageLightbox
-              src={`/api/scans/image?issue=${issueId}&side=back&t=${cacheBust}`}
+              src={backSrc}
               alt={backAlt}
               style={{ width: "100%", borderRadius: 6, border: "1px solid #333" }}
             />

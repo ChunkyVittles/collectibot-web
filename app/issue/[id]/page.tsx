@@ -9,29 +9,13 @@ import DeleteScansButton from "@/app/components/DeleteScansButton";
 import ReassignScansButton from "@/app/components/ReassignScansButton";
 import SetHeroButton from "@/app/components/SetHeroButton";
 import IssueCoverSection from "@/app/components/IssueCoverSection";
+import { ID_TO_SLUG, resolveIssueId } from "@/app/lib/issue-slugs";
 
 type Props = {
   params: Promise<{ id: string }>;
 };
 
 export const revalidate = 3600;
-
-// Slug overrides for individual issues. Single-issue pilot for the slug
-// migration — if the URL param matches a slug here, resolve it to the
-// numeric id and render. If the URL param IS a numeric id that has a
-// slug, 308-redirect to the slug URL so search engines pick up the
-// canonical form. Will be replaced with a DB column when the full
-// migration runs.
-const SLUG_TO_ID: Record<string, string> = {
-  "conan-the-barbarian-1-marvel-1970": "23540",
-};
-const ID_TO_SLUG: Record<string, string> = Object.fromEntries(
-  Object.entries(SLUG_TO_ID).map(([slug, id]) => [id, slug]),
-);
-
-function resolveIssueId(param: string): string {
-  return SLUG_TO_ID[param] ?? param;
-}
 
 export async function generateMetadata({ params }: Props) {
   const { id: param } = await params;
@@ -367,6 +351,7 @@ export default async function IssuePage({ params }: Props) {
 
       <IssueCoverSection
         issueId={issue.id}
+        issueSlug={ID_TO_SLUG[String(issue.id)] ?? null}
         seriesName={issue.series_name}
         issueNumber={issue.number}
         publisherName={issue.publisher_name}
