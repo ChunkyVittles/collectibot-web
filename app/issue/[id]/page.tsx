@@ -324,7 +324,7 @@ export default async function IssuePage({ params }: Props) {
   };
 
   return (
-    <div style={{ maxWidth: 700, margin: "40px auto", padding: "0 20px", fontFamily: "system-ui" }}>
+    <div style={{ maxWidth: 1100, margin: "40px auto", padding: "0 24px", fontFamily: "system-ui" }}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -333,10 +333,10 @@ export default async function IssuePage({ params }: Props) {
         &larr; {issue.series_name}
       </Link>
 
-      <h1 style={{ marginTop: 16, marginBottom: 4 }}>
+      <h1 style={{ marginTop: 16, marginBottom: 4, fontSize: 32 }}>
         {issue.series_name} #{issue.number}
       </h1>
-      <p style={{ color: "#666", margin: 0 }}>
+      <p style={{ color: "#888", margin: 0, fontSize: 15 }}>
         {issue.publisher_id && issue.publisher_name && (
           <>
             <Link href={`/publisher/${issue.publisher_id}`} style={{ color: "inherit" }}>
@@ -349,35 +349,67 @@ export default async function IssuePage({ params }: Props) {
         {issue.variant_name && <> &middot; {issue.variant_name}</>}
       </p>
 
-      <IssueCoverSection
-        issueId={issue.id}
-        issueSlug={ID_TO_SLUG[String(issue.id)] ?? null}
-        seriesName={issue.series_name}
-        issueNumber={issue.number}
-        publisherName={issue.publisher_name}
-        publicationDate={issue.publication_date || issue.key_date}
-        hasFront={hasFront}
-        hasBack={hasBack}
-        isAdmin={isAdmin}
-      />
+      {/* Two-column body: covers + admin on the left, all the text content
+          on the right. auto-fit minmax means it stacks to one column when
+          the viewport gets narrower than ~720px. */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+          gap: 40,
+          marginTop: 28,
+          alignItems: "start",
+        }}
+      >
+        {/* Left: covers + admin controls */}
+        <div>
+          <IssueCoverSection
+            issueId={issue.id}
+            issueSlug={ID_TO_SLUG[String(issue.id)] ?? null}
+            seriesName={issue.series_name}
+            issueNumber={issue.number}
+            publisherName={issue.publisher_name}
+            publicationDate={issue.publication_date || issue.key_date}
+            hasFront={hasFront}
+            hasBack={hasBack}
+            isAdmin={isAdmin}
+          />
 
-      {isAdmin && (hasFront || hasBack) && (
-        <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", marginTop: 16 }}>
-          <DeleteScansButton issueId={issue.id} />
-          {/* TODO: re-add <SwapCoversButton /> when the swap WIP ships */}
-          <ReassignScansButton
-            issueId={issue.id}
-            currentSeries={issue.series_name}
-            currentIssueNumber={issue.number}
-            currentSeriesId={issue.series_id}
-          />
-          <SetHeroButton
-            seriesId={issue.series_id}
-            issueId={issue.id}
-            isHero={isHero}
-          />
+          {isAdmin && (hasFront || hasBack) && (
+            <details
+              style={{
+                marginTop: 16,
+                background: "#1a1a1a",
+                border: "1px solid #2a2a2a",
+                borderRadius: 6,
+                padding: "8px 12px",
+                fontSize: 13,
+              }}
+            >
+              <summary style={{ cursor: "pointer", color: "#888", userSelect: "none" }}>
+                Admin tools
+              </summary>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                <DeleteScansButton issueId={issue.id} />
+                {/* TODO: re-add <SwapCoversButton /> when the swap WIP ships */}
+                <ReassignScansButton
+                  issueId={issue.id}
+                  currentSeries={issue.series_name}
+                  currentIssueNumber={issue.number}
+                  currentSeriesId={issue.series_id}
+                />
+                <SetHeroButton
+                  seriesId={issue.series_id}
+                  issueId={issue.id}
+                  isHero={isHero}
+                />
+              </div>
+            </details>
+          )}
         </div>
-      )}
+
+        {/* Right: key issue, credits, variants, details */}
+        <div>
 
       {/* Key issue notes */}
       {keyNotes && (
@@ -539,6 +571,8 @@ export default async function IssuePage({ params }: Props) {
           )}
         </dl>
       </section>
+        </div>
+      </div>
     </div>
   );
 }
