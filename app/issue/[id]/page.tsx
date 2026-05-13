@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { cookies } from "next/headers";
 import DeleteScansButton from "@/app/components/DeleteScansButton";
-import SwapCoversButton from "@/app/components/SwapCoversButton";
+// TODO: SwapCoversButton is part of an in-progress feature (the
+// /api/scans/swap route + UI). Re-enable when that WIP is ready to ship.
+// import SwapCoversButton from "@/app/components/SwapCoversButton";
 import ReassignScansButton from "@/app/components/ReassignScansButton";
 import SetHeroButton from "@/app/components/SetHeroButton";
 import IssueCoverSection from "@/app/components/IssueCoverSection";
@@ -256,7 +258,7 @@ export default async function IssuePage({ params }: Props) {
       {isAdmin && (hasFront || hasBack) && (
         <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", marginTop: 16 }}>
           <DeleteScansButton issueId={issue.id} />
-          {hasFront && hasBack && <SwapCoversButton issueId={issue.id} />}
+          {/* TODO: re-add <SwapCoversButton /> when the swap WIP ships */}
           <ReassignScansButton
             issueId={issue.id}
             currentSeries={issue.series_name}

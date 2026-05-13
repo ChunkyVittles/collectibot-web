@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -18,7 +18,19 @@ type Result = {
   year_first_published?: number;
 };
 
+// TODO: this whole file gets rewritten as a server component in Task 2.4
+// of the SEO plan. The Suspense wrap below exists only to let `next build`
+// prerender the page in the meantime — useSearchParams() forces CSR
+// bailout and the page errors during static export without it.
 export default function Home() {
+  return (
+    <Suspense fallback={null}>
+      <HomeInner />
+    </Suspense>
+  );
+}
+
+function HomeInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const urlQuery = searchParams.get("q") || "";
