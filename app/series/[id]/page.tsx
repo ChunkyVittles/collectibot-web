@@ -120,14 +120,22 @@ export default async function SeriesPage({ params }: Props) {
 
   // Key issues for this series — only rows with a real key_comment_1 (filters
   // out the 60% of key_issues rows that are just art-credit annotations).
+  // DISTINCT ON (i.id) dedupes the noisy CGC import data, which often has
+  // 2-3 near-duplicate key_issues rows per issue (Conan #15 has three identical
+  // "Elric of Melnibon? appearance." rows). Pick the row with the longest
+  // key_comment_1 as tiebreaker so we keep the most informative copy.
   const keyIssuesRes = await pool.query<KeyIssueRow>(
-    `SELECT ki.issue_id, i.number, i.publication_date, i.key_date,
-            ki.key_comment_1, ki.key_comment_2, ki.key_comment_3,
-            EXISTS(SELECT 1 FROM scans WHERE scans.issue_id = i.id AND scans.scan_type = 'front_cover') AS has_scan
-     FROM key_issues ki
-     JOIN issues i ON ki.issue_id = i.id
-     WHERE i.series_id = $1 AND ki.key_comment_1 IS NOT NULL
-     ORDER BY i.key_date ASC NULLS LAST, i.number ASC
+    `SELECT * FROM (
+       SELECT DISTINCT ON (i.id)
+              ki.issue_id, i.number, i.publication_date, i.key_date,
+              ki.key_comment_1, ki.key_comment_2, ki.key_comment_3,
+              EXISTS(SELECT 1 FROM scans WHERE scans.issue_id = i.id AND scans.scan_type = 'front_cover') AS has_scan
+       FROM key_issues ki
+       JOIN issues i ON ki.issue_id = i.id
+       WHERE i.series_id = $1 AND ki.key_comment_1 IS NOT NULL
+       ORDER BY i.id, length(ki.key_comment_1) DESC, ki.id
+     ) deduped
+     ORDER BY key_date ASC NULLS LAST, number ASC
      LIMIT 50`,
     [id]
   );
