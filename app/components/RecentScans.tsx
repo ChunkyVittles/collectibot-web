@@ -14,6 +14,7 @@ type RecentScan = {
   postmark_city?: string;
   status: "matched" | "pending" | "postcard";
   front_image_path?: string;
+  uploaded_at?: string;
 };
 
 function Logo() {
@@ -91,11 +92,19 @@ export default function RecentScans() {
                 : s.status === "matched"
                   ? `/issue/${s.issue_id}`
                   : `/admin/scans`;
+              // Version-bust by uploaded_at so re-uploading a cover bypasses
+              // the 5-min image cache — without it, the thumbnail keeps
+              // serving the old bytes from Cloudflare's edge until the cache
+              // expires. The DB updates uploaded_at on every upload, so a
+              // replacement always produces a fresh URL.
+              const v = s.uploaded_at
+                ? `&v=${encodeURIComponent(s.uploaded_at)}`
+                : "";
               const imgSrc = isPostcard
-                ? `/api/scans/image?postcard=${s.postcard_id}&side=front`
+                ? `/api/scans/image?postcard=${s.postcard_id}&side=front${v}`
                 : s.status === "matched"
-                  ? `/api/scans/image?issue=${s.issue_id}&side=front`
-                  : `/api/scans/image?path=${encodeURIComponent(s.front_image_path || "")}`;
+                  ? `/api/scans/image?issue=${s.issue_id}&side=front${v}`
+                  : `/api/scans/image?path=${encodeURIComponent(s.front_image_path || "")}${v}`;
               const label = isPostcard
                 ? (s.description || s.postmark_city || "Postcard")
                 : s.series_name || "";
