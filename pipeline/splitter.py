@@ -237,20 +237,28 @@ def deskew(img: Image.Image) -> Image.Image:
     if left_angle is not None:
         log.info(f"  Deskew: left edge = {left_angle:.1f}° ({left_result[1]} points)")
 
-    # Combine: average if both found, otherwise use whichever we have
+    # Require BOTH edges to AGREE before trusting the angle. A genuinely skewed
+    # page tilts its top and left edges by the same amount; but a diagonally
+    # drawn logo or banner (e.g. the angled "STAR WARS" ad on a back cover) only
+    # skews the top trace, so top and left disagree → it's artwork, not page
+    # skew → leave the scan alone. Detecting only one edge is likewise too
+    # unreliable to risk rotating a scan that's probably already straight.
+    EDGE_AGREE_TOL = 0.7  # degrees
     if top_angle is not None and left_angle is not None:
+        if abs(top_angle - left_angle) > EDGE_AGREE_TOL:
+            log.info(
+                f"  Deskew: top {top_angle:.1f}° vs left {left_angle:.1f}° disagree "
+                f"(>{EDGE_AGREE_TOL}°) — likely artwork, not skew; skipping"
+            )
+            return img
         angle = (top_angle + left_angle) / 2
         log.info(f"  Deskew: averaged = {angle:.1f}°")
-    elif top_angle is not None:
-        angle = top_angle
-    elif left_angle is not None:
-        angle = left_angle
     else:
-        log.info("  Deskew: no edges detected, skipping")
+        log.info("  Deskew: only one edge detected — not confident, skipping")
         return img
 
-    # Only rotate if meaningful but not extreme
-    if abs(angle) < 0.1 or abs(angle) > 20:
+    # Only rotate a meaningful, non-extreme angle.
+    if abs(angle) < 0.3 or abs(angle) > 20:
         log.info(f"  Deskew: angle {angle:.1f}° outside range, skipping")
         return img
 
@@ -409,29 +417,16 @@ def _strip_edge_artifacts(gray: np.ndarray, content: np.ndarray) -> tuple[int, i
 
 def crop_to_content(img: Image.Image) -> Image.Image:
     """
-    Deskew, crop tightly, then add a clean white border.
-    Note: scanner artifact stripping is done once upfront by strip_all_in_directory,
-    NOT here — otherwise split halves get double-stripped.
+    DISABLED — return the image untouched.
+
+    This used to deskew, tight-crop, and re-border every scan. But scans coming
+    from Relay are already correctly oriented and framed by the user, so this
+    processing only ever DAMAGED them — e.g. mistaking a diagonally-drawn cover
+    logo (the "STAR WARS" back-cover ad) for page skew and rotating the whole
+    image. Per the user's instruction, uploads must be the scan exactly as
+    scanned: no rotation, no crop, no added border.
     """
-    img = deskew(img)
-
-    gray = np.array(ImageOps.grayscale(img))
-    h, w = gray.shape
-    content = gray < CONTENT_THRESHOLD
-
-    top, bottom, left, right = _strip_edge_artifacts(gray, content)
-
-    if right <= left or bottom <= top:
-        return img
-
-    # Crop tight to content (no padding)
-    cropped = img.crop((left, top, right, bottom))
-
-    # Add clean white border
-    border_px = int(BORDER_INCHES * SCAN_DPI)
-    result = ImageOps.expand(cropped, border=border_px, fill="white")
-
-    return result
+    return img
 
 
 def split_if_landscape(image_path: Path) -> list[Path]:
@@ -548,16 +543,12 @@ def split_if_landscape(image_path: Path) -> list[Path]:
 
 
 def strip_all_in_directory(directory: Path):
-    """Strip top 50px and right 10% from every image file in directory, overwriting in place."""
-    for f in sorted(directory.iterdir()):
-        if f.suffix.lower() in IMAGE_EXTS:
-            img = Image.open(f)
-            cropped = strip_scanner_artifact(img)
-            if cropped.size != img.size:
-                cropped.save(f, quality=95)
-                log.info(f"Stripped scanner artifacts from {f.name}")
-                cropped.close()
-            img.close()
+    """DISABLED — leave scans exactly as scanned (no edge stripping).
+
+    Previously cropped the scanner-edge artifacts off every image; per the
+    user's instruction the scan must be uploaded unchanged. No-op now.
+    """
+    return
 
 
 def split_all_in_directory(directory: Path) -> list[Path]:

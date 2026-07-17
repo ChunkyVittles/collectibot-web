@@ -10,7 +10,7 @@ from pathlib import Path
 import psycopg2
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent / ".env")
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 
 def get_db_connection():
@@ -58,6 +58,31 @@ def keywords_only(text: str) -> str:
     return " ".join(words)
 
 
+# Cover decoration phrases — flourishes printed on the cover that are NOT
+# part of the actual series title (which lives in the indicia). The matcher
+# tries the decoration-stripped title as a fallback so "Marvel Tales
+# Featuring Spider-Man" still resolves to GCD's "Marvel Tales".
+COVER_DECORATION_RX = re.compile(
+    r"\s+(featuring|starring|presents|presenting|introducing)\b.*$",
+    re.IGNORECASE,
+)
+
+
+def strip_cover_decoration(title: str) -> str | None:
+    """Strip 'featuring X', 'starring X', etc. from the END of a title.
+
+    Returns the trimmed title if a decoration phrase was found and removed,
+    or None if no decoration was present (so callers can skip a redundant
+    query).
+    """
+    if not title:
+        return None
+    trimmed = COVER_DECORATION_RX.sub("", title).strip(" -:!")
+    if trimmed and trimmed.lower() != title.strip().lower():
+        return trimmed
+    return None
+
+
 def slugify(text: str) -> str:
     """Convert text to a URL-safe slug."""
     s = text.lower().strip()
@@ -67,9 +92,68 @@ def slugify(text: str) -> str:
     return s.strip("-")
 
 
-def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
+def _parse_cover_price(price_str):
+    """Parse a printed cover price to a USD float.
+
+    Handles cent prices ('60¢', '75 CENTS', '60c', '.60' → 0.60/0.75) and
+    dollar prices ('$1.00', '1.00 USD', '$3.99' → 1.00/3.99). Critically,
+    '60¢' must become 0.60 — NOT 60.0 — or it never matches the DB's 0.60.
     """
-    Match extracted metadata against the database.
+    if not price_str:
+        return None
+    s = str(price_str).strip().lower()
+    m = re.search(r"(\d+(?:\.\d+)?)", s)
+    if not m:
+        return None
+    try:
+        val = float(m.group(1))
+    except ValueError:
+        return None
+    has_dollar = "$" in s
+    is_cents = (not has_dollar) and ("¢" in s or "cent" in s or re.search(r"\d\s*c\b", s))
+    if is_cents and val >= 1:           # "60¢" → 0.60 (leave an already-decimal alone)
+        val /= 100.0
+    elif (not has_dollar) and "." not in s and 5 <= val <= 99:
+        val /= 100.0                    # bare classic cent price like "60" → 0.60
+    return val
+
+
+def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
+    """Match a cover, corroborating title + issue + price.
+
+    Tries the primary title AND any alternate titles the identifier flagged
+    (e.g. the big character logo on a reprint series like "Marvel Super Action"
+    featuring "The Avengers"). Because _match_one_title price-rejects a candidate
+    whose printed price can't line up, the title whose price+issue actually agree
+    wins — so a 50¢ book won't be accepted as "Avengers #34" (12¢); it keeps
+    looking and lands on the right series. When no price is printed, price simply
+    doesn't gate the match. Returns the best matched result, else the primary no-match.
+    """
+    primary = str(front_data.get("title") or "")
+    candidates = [primary]
+    for t in (front_data.get("alt_titles") or []):
+        t = str(t or "").strip()
+        if t and t.lower() not in [c.lower() for c in candidates]:
+            candidates.append(t)
+
+    best = None
+    fallback = None
+    for cand in candidates:
+        fd = dict(front_data)
+        fd["title"] = cand
+        res = _match_one_title(fd, back_data)
+        if res.get("matched"):
+            if best is None or res.get("confidence", 0) > best.get("confidence", 0):
+                best = res
+        elif fallback is None:
+            fallback = res  # first (primary) no-match, for review context
+    return best or fallback or {"matched": False, "confidence": 0,
+                                "reason": "No candidates"}
+
+
+def _match_one_title(front_data: dict, back_data: dict | None = None) -> dict:
+    """
+    Match extracted metadata against the database for ONE title.
     Returns: {matched, confidence, issue_id, series_id, series_name, series_slug, ...}
     """
     title = front_data.get("title", "")
@@ -87,6 +171,12 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
         year = int(year_match.group(1)) if year_match else None
 
     normalized = normalize_title(title)
+    fmt = str(front_data.get("format") or "").strip()
+    # Special formats (Annual, Giant-Size, King-Size, Special, …) are usually a
+    # SEPARATE series in the DB — e.g. "All-Star Squadron Annual", not the
+    # regular ongoing. Search that combined name first so an Annual doesn't
+    # collide with (and get price-rejected against) the base series.
+    format_title = f"{normalized} {fmt}".strip() if fmt else None
 
     conn = get_db_connection()
     try:
@@ -112,13 +202,36 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             ORDER BY s.year_began ASC
             LIMIT 50
         """
-        cur.execute(query, (normalized, issue_number))
-        rows = cur.fetchall()
+        rows = []
+        if format_title:
+            # e.g. "All-Star Squadron Annual" — exact then fuzzy
+            cur.execute(query, (format_title, issue_number))
+            rows = cur.fetchall()
+            if not rows:
+                cur.execute(query, (f"%{format_title}%", issue_number))
+                rows = cur.fetchall()
+
+        if not rows:
+            cur.execute(query, (normalized, issue_number))
+            rows = cur.fetchall()
 
         if not rows:
             # Try fuzzy: add % wildcards
             cur.execute(query, (f"%{normalized}%", issue_number))
             rows = cur.fetchall()
+
+        if not rows:
+            # Strip cover-decoration phrases (FEATURING X, STARRING X, etc.)
+            # — common cover flourishes that aren't part of the series name.
+            # "Marvel Tales Featuring Spider-Man" → "Marvel Tales"
+            # "Weird War Tales Starring the Creature Commandos!" → "Weird War Tales"
+            stripped_deco = strip_cover_decoration(normalized)
+            if stripped_deco:
+                cur.execute(query, (stripped_deco, issue_number))
+                rows = cur.fetchall()
+                if not rows:
+                    cur.execute(query, (f"%{stripped_deco}%", issue_number))
+                    rows = cur.fetchall()
 
         if not rows:
             # Try &/and variant: "Sable & Fortune" → "Sable and Fortune" or vice versa
@@ -241,16 +354,11 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
         best = None
         best_score = 0
 
-        # Extract USD price from front data for comparison
-        extracted_price = front_data.get("price", "")
-        extracted_usd = None
-        if extracted_price:
-            usd_match = re.search(r"\$?([\d.]+)\s*(?:us|usd)?", str(extracted_price), re.IGNORECASE)
-            if usd_match:
-                try:
-                    extracted_usd = float(usd_match.group(1))
-                except ValueError:
-                    pass
+        # Extract USD price from front data for comparison (cent-aware).
+        extracted_usd = _parse_cover_price(front_data.get("price", ""))
+
+        # Edition: "newsstand" (barcode on cover) vs "direct" (logo/no barcode).
+        extracted_edition = str(front_data.get("edition") or "").strip().lower()
 
         # Extract variant from front data for matching
         extracted_variant = str(front_data.get("variant") or "").strip().lower()
@@ -263,28 +371,21 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
             issue_id, series_id, series_name, db_issue_num, yr_began, yr_ended, pub_name, db_price, db_variant = row
             score = 0
 
-            # Hard filter: skip candidates from wrong era/price
-            if extracted_usd:
-                skip = False
-                if db_price:
-                    db_usd_match = re.search(r"([\d.]+)\s*USD", str(db_price))
-                    if db_usd_match:
-                        try:
-                            db_usd = float(db_usd_match.group(1))
-                            if abs(extracted_usd - db_usd) > 0.50:
-                                skip = True  # USD price mismatch
-                        except ValueError:
-                            pass
-                    elif not db_usd_match:
-                        # DB has a price but no USD component (e.g. "0.15 CAD")
-                        # If extracted price is modern ($1+) and series is pre-1975, skip
-                        if extracted_usd >= 1.00 and yr_began and yr_began < 1975:
-                            skip = True
-                # No DB price at all — use era as proxy
-                elif extracted_usd >= 1.00 and yr_began and yr_began < 1975:
-                    skip = True
-                if skip:
-                    continue
+            # Hard filter: reject ONLY on a definite USD-vs-USD price mismatch.
+            # This still disambiguates same-name/same-number series (e.g.
+            # Punisher 1986 LS at 75¢ vs Punisher 1987 ongoing at $1.50), but
+            # — unlike before — it does NOT reject when the DB row has no price
+            # or a non-USD price, so a clean title/issue/year match isn't
+            # needlessly dumped to review. Price still adds a big score bonus
+            # below when it matches.
+            if extracted_usd is not None and db_price:
+                db_usd_match = re.search(r"([\d.]+)\s*USD", str(db_price))
+                if db_usd_match:
+                    try:
+                        if abs(extracted_usd - float(db_usd_match.group(1))) > 0.01:
+                            continue
+                    except ValueError:
+                        pass
 
             # Title matching (with punctuation-stripped fallback)
             # Compare against both normalized (The-stripped) and original title
@@ -303,6 +404,15 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                     or sn_stripped in norm_stripped
                     or sn_stripped in orig_stripped):
                 score += 40  # DB name is contained in extracted title
+
+            # Special-format preference: if this is an Annual/Giant-Size/etc.,
+            # strongly prefer the series whose name actually carries that word
+            # (e.g. "All-Star Squadron Annual") over the base ongoing series.
+            if fmt:
+                if fmt.lower() in (series_name or "").lower():
+                    score += 25
+                else:
+                    score -= 15  # base series when we expected the special format
 
             # Issue number matched (already filtered by query)
             score += 25
@@ -349,6 +459,29 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                 if "cover a" not in (db_variant or "").lower():
                     score -= 5
 
+            # Newsstand vs Direct edition (read from the cover barcode box).
+            # GCD records the newsstand printing as a separate variant. Only
+            # prefer the newsstand record when one actually EXISTS among the
+            # candidates — otherwise the base/direct record wins on its own,
+            # so a book is never mislabeled newsstand when no such variant
+            # exists in the database.
+            db_var_l = (db_variant or "").lower()
+            if extracted_edition == "newsstand":
+                if "newsstand" in db_var_l:
+                    score += 25
+            elif extracted_edition == "direct":
+                if "newsstand" in db_var_l:
+                    score -= 25  # we're a direct copy — don't pick the newsstand record
+                elif (not db_var_l) or "direct" in db_var_l:
+                    score += 12  # prefer the plain/Direct record over exotic variants
+            # When the cover shows no special variant text, steer away from
+            # exotic reprint/exclusive variants (virgin, sketch, foil, DF/Dynamic
+            # Forces, blank, etc.) and toward the standard issue.
+            if not extracted_variant_norm and any(
+                k in db_var_l for k in ("virgin", "sketch", "foil", "dynamic forces",
+                                        " df ", "blank", "exclusive", "retailer", "incentive")):
+                score -= 20
+
             if score > best_score:
                 best_score = score
                 best = {
@@ -361,6 +494,9 @@ def match_issue(front_data: dict, back_data: dict | None = None) -> dict:
                     "issue_number": db_issue_num,
                     "year_began": yr_began,
                     "publisher": pub_name,
+                    "variant_name": db_variant,
+                    "edition": ("newsstand" if "newsstand" in db_var_l
+                                else (extracted_edition or None)),
                     "extracted_title": title,
                     "extracted_issue": issue_number,
                     "extracted_year": year,

@@ -22,6 +22,8 @@ export default function ReassignScansButton({
   const [sameSeriesIssues, setSameSeriesIssues] = useState<any[]>([]);
   const [selectedSameSeriesIssue, setSelectedSameSeriesIssue] = useState<number | null>(null);
   const [sameSeriesLoaded, setSameSeriesLoaded] = useState(false);
+  const [issueFilter, setIssueFilter] = useState("");
+  const [issueDropdownOpen, setIssueDropdownOpen] = useState(false);
 
   // Series change
   const [seriesQuery, setSeriesQuery] = useState("");
@@ -179,9 +181,16 @@ export default function ReassignScansButton({
             </button>
           ) : (
             <>
-              <select
-                value={selectedSameSeriesIssue || ""}
-                onChange={(e) => setSelectedSameSeriesIssue(Number(e.target.value))}
+            <div style={{ position: "relative" }}>
+              <input
+                value={issueFilter}
+                onChange={(e) => {
+                  setIssueFilter(e.target.value);
+                  setSelectedSameSeriesIssue(null);
+                  setIssueDropdownOpen(true);
+                }}
+                onFocus={() => setIssueDropdownOpen(true)}
+                placeholder="Type issue number (e.g. -1, 35)..."
                 style={{
                   width: "100%",
                   padding: 8,
@@ -189,33 +198,69 @@ export default function ReassignScansButton({
                   border: "1px solid #444",
                   borderRadius: 4,
                   color: "#fff",
+                  boxSizing: "border-box",
                 }}
-              >
-                <option value="">Select issue...</option>
-                {sameSeriesIssues.map((i: any) => (
-                  <option key={i.id} value={i.id} disabled={i.id === issueId}>
-                    #{i.number}
-                    {i.variant_name ? ` — ${i.variant_name}` : ""}
-                    {i.publication_date ? ` (${i.publication_date})` : ""}
-                    {i.id === issueId ? " (current)" : ""}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={() => selectedSameSeriesIssue && doReassign(selectedSameSeriesIssue)}
-                disabled={!selectedSameSeriesIssue || loading}
-                style={{
-                  marginTop: 12,
-                  padding: "8px 16px",
-                  background: selectedSameSeriesIssue ? "#2563eb" : "#333",
-                  border: "none",
-                  borderRadius: 4,
-                  color: "#fff",
-                  cursor: selectedSameSeriesIssue ? "pointer" : "default",
-                }}
-              >
-                {loading ? "Moving..." : "Move Scans Here"}
-              </button>
+              />
+              {issueDropdownOpen && (() => {
+                const search = issueFilter.trim().toLowerCase();
+                const filtered = sameSeriesIssues.filter((i: any) => {
+                  if (!search) return false;
+                  const num = i.number.toLowerCase();
+                  return num === search || num.startsWith(search) || num.includes(search) ||
+                    (i.variant_name && i.variant_name.toLowerCase().includes(search));
+                }).slice(0, 50);
+                if (filtered.length === 0 && search) return (
+                  <div style={{ color: "#f59e0b", fontSize: 12, marginTop: 4 }}>
+                    No #{search} found in this series.
+                  </div>
+                );
+                if (filtered.length === 0) return null;
+                return (
+                  <div style={{ position: "absolute", zIndex: 10, left: 0, right: 0, border: "1px solid #444", borderRadius: 4, maxHeight: 200, overflowY: "auto", marginTop: 4, background: "#222" }}>
+                    {filtered.map((i: any) => (
+                      <div
+                        key={i.id}
+                        onClick={() => {
+                          setSelectedSameSeriesIssue(i.id);
+                          setIssueFilter(`#${i.number}${i.variant_name ? ` — ${i.variant_name}` : ""}`);
+                          setIssueDropdownOpen(false);
+                        }}
+                        style={{
+                          padding: "8px 12px",
+                          cursor: i.id === issueId ? "default" : "pointer",
+                          borderBottom: "1px solid #333",
+                          fontSize: 13,
+                          opacity: i.id === issueId ? 0.4 : 1,
+                          background: i.id === selectedSameSeriesIssue ? "#1e3a1e" : "transparent",
+                        }}
+                        onMouseEnter={(e) => { if (i.id !== issueId) e.currentTarget.style.background = "#333"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = i.id === selectedSameSeriesIssue ? "#1e3a1e" : "transparent"; }}
+                      >
+                        <strong>#{i.number}</strong>
+                        {i.variant_name && <span style={{ color: "#f59e0b", marginLeft: 8 }}>{i.variant_name}</span>}
+                        {i.publication_date && <span style={{ color: "#888", marginLeft: 8 }}>{i.publication_date}</span>}
+                        {i.id === issueId && <span style={{ color: "#666", marginLeft: 8 }}>(current)</span>}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+            <button
+              onClick={() => selectedSameSeriesIssue && doReassign(selectedSameSeriesIssue)}
+              disabled={!selectedSameSeriesIssue || loading}
+              style={{
+                marginTop: 12,
+                padding: "8px 16px",
+                background: selectedSameSeriesIssue ? "#2563eb" : "#333",
+                border: "none",
+                borderRadius: 4,
+                color: "#fff",
+                cursor: selectedSameSeriesIssue ? "pointer" : "default",
+              }}
+            >
+              {loading ? "Moving..." : "Move Scans Here"}
+            </button>
             </>
           )}
         </div>

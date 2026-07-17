@@ -46,3 +46,7 @@ next-env.d.ts
 pipeline/__pycache__/
 pipeline/venv/
 pipeline/.env
+.env
+*.env
+**/.env
+pipeline/test_output/

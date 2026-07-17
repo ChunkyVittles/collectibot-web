@@ -43,10 +43,16 @@ export default function RecentScans() {
   const [scans, setScans] = useState<RecentScan[]>([]);
 
   useEffect(() => {
-    fetch("/api/scans/recent")
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setScans(data); })
-      .catch(() => {});
+    // Poll so freshly-scanned books stream into the header live (newest on the
+    // left) while you work — instead of only showing a snapshot from page load.
+    const load = () =>
+      fetch("/api/scans/recent", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((data) => { if (Array.isArray(data)) setScans(data); })
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 4000);
+    return () => clearInterval(id);
   }, []);
 
   return (

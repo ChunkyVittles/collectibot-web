@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from matcher import slugify
 
-load_dotenv(Path(__file__).parent / ".env")
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 HENSLEY_DIR = Path("/Users/davidbull/Desktop/Hensley")
 MAX_WIDTH = 900
