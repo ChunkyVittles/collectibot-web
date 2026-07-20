@@ -88,11 +88,27 @@ def upload_pair(
     front_url = f"https://{bucket}.r2.dev/{r2_front}"
     back_url = f"https://{bucket}.r2.dev/{r2_back}"
 
-    # Insert into scans table (replace any existing scans for this issue)
+    # Insert into scans table (replace any existing scans for this book).
+    # Clear scans from EVERY variant row of the same series+number, not just
+    # this exact issue_id. Direct and Newsstand are separate issue rows in GCD,
+    # and Claude Vision's barcode read can flip between re-scans of the same
+    # physical copy — landing the re-scan on the sibling variant row. Keying the
+    # delete only on issue_id let both rows keep scans, so one book showed up
+    # under both Direct AND Newsstand. Collapsing by (series_id, number) means a
+    # re-scan always overrides the prior entry, whichever variant it matched.
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM scans WHERE issue_id = %s", (issue_id,))
+        cur.execute(
+            """DELETE FROM scans WHERE issue_id IN (
+                   SELECT sib.id FROM issues sib
+                   JOIN issues tgt
+                     ON sib.series_id = tgt.series_id
+                    AND sib.number    = tgt.number
+                   WHERE tgt.id = %s
+               )""",
+            (issue_id,),
+        )
 
         cur.execute(
             """INSERT INTO scans (issue_id, scan_type, image_url, contributor_id, rights_granted)
@@ -112,9 +128,13 @@ def upload_pair(
     finally:
         conn.close()
 
-    # Copy to Hensley output folder
-    hensley_front = HENSLEY_DIR / f"{series_slug}_{issue_number}_F.webp"
-    hensley_back = HENSLEY_DIR / f"{series_slug}_{issue_number}_B.webp"
+    # Copy to Hensley output folder. Key the filename on issue_id, not just
+    # series+number: Direct and Newsstand are distinct issue rows that share the
+    # same series+number, so the old naming had both variants overwrite the same
+    # local file — making it look like they "shared" an image. issue_id is unique
+    # per variant, so each keeps its own backup.
+    hensley_front = HENSLEY_DIR / f"{series_slug}_{issue_number}_{issue_id}_F.webp"
+    hensley_back = HENSLEY_DIR / f"{series_slug}_{issue_number}_{issue_id}_B.webp"
     shutil.copy2(front_webp, hensley_front)
     shutil.copy2(back_webp, hensley_back)
 

@@ -316,14 +316,38 @@ def _match_one_title(front_data: dict, back_data: dict | None = None) -> dict:
                 rows = cur.fetchall()
 
         if not rows:
+            # Strip a leading decorative adjective that the cover logo adds but
+            # the series name omits: "The Mighty Avengers" → "Avengers",
+            # "Invincible Iron Man" → "Iron Man", "Uncanny X-Men" → "X-Men".
+            # Only a FALLBACK — real series like "The Incredible Hulk" or
+            # "The Amazing Spider-Man" already matched above and never reach here.
+            DECORATIVE_ADJ = {
+                "mighty", "invincible", "uncanny", "sensational", "spectacular",
+                "astonishing", "savage", "fabulous", "incredible", "amazing",
+                "immortal", "superior", "all-new", "mighty world of",
+            }
+            w = normalized.split()
+            if len(w) >= 2 and w[0].lower() in DECORATIVE_ADJ:
+                deadj = " ".join(w[1:])
+                if len(deadj) >= 3:
+                    cur.execute(query, (deadj, issue_number))
+                    rows = cur.fetchall()
+                    if not rows:
+                        cur.execute(query, (f"%{deadj}%", issue_number))
+                        rows = cur.fetchall()
+
+        if not rows:
             # Try word-dropping: remove one word at a time from the title and
             # search for each shortened version. Handles cases like
             # "Web of Kaine Spider-Man" where "Kaine" is an overlay graphic,
             # not part of the series name "Web of Spider-Man".
             words = normalized.split()
-            if len(words) >= 3:
-                # Try dropping 1 word, then 2 words; prefer longer matches
-                for drop_count in range(1, min(3, len(words) - 1)):
+            if len(words) >= 2:
+                # Drop 1 word (then 2) — always leave at least one word. Also
+                # runs for 2-word titles ("Mighty Avengers" → "Avengers") so
+                # ANY decorative word is tried, then confirmed by issue+price.
+                max_drop = min(2, len(words) - 1)
+                for drop_count in range(1, max_drop + 1):
                     for combo in combinations(range(len(words)), len(words) - drop_count):
                         candidate = " ".join(words[i] for i in combo)
                         if len(candidate) < 3:
