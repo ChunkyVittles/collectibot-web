@@ -24,7 +24,8 @@ FRONT_PROMPT = """This is a comic book cover. Extract exactly:
 8. Barcode present — is there a real scannable UPC BARCODE (a block of many parallel vertical black lines) printed on the FRONT cover? Return true ONLY if you clearly see that block of vertical bars. A Direct Edition box in the same corner looks similar but contains a DRAWN CHARACTER, a publisher LOGO (e.g. a small Spider-Man head), or a small date/code with NO vertical bars — that is NOT a barcode, return false. When unsure, return false.
 9. Special format — if the title treatment prominently includes a special-format word (ANNUAL, GIANT-SIZE, KING-SIZE, SPECIAL, SPECTACULAR, GIANT, TREASURY), return it normalized ("Annual", "Giant-Size", "King-Size", "Special", …). Otherwise null. These almost always indicate a SEPARATE series in the database (e.g. "All-Star Squadron Annual"), so it matters.
 10. Alternate titles — a JSON array of any OTHER prominent title text on the cover (the large character logo, a subtitle, etc.) that could plausibly be the series name, so it can be tried if the primary title doesn't match. E.g. for a "Marvel Super Action" cover featuring "The Avengers", return ["The Avengers"]. Empty array [] if none.
-Return as JSON: {"title", "issue_number", "publisher", "year", "month", "price", "variant", "barcode_present", "format", "alt_titles"}
+11. Edition text — READ any words printed inside or right beside the barcode/UPC box. Publishers often print the edition there. If it explicitly says "DIRECT EDITION" or "DIRECT" return "direct". If it explicitly says "NEWSSTAND" return "newsstand". This is printed TEXT you can read — a Direct Edition copy commonly still has a full UPC barcode AND the words "DIRECT EDITION" next to it. Return null only if no such edition word is printed.
+Return as JSON: {"title", "issue_number", "publisher", "year", "month", "price", "variant", "barcode_present", "edition_text", "format", "alt_titles"}
 Return ONLY the JSON object, no markdown fences or extra text."""
 
 BACK_PROMPT = """This is the back cover of a comic book. Extract:
@@ -91,12 +92,22 @@ def extract_metadata(image_path: Path, prompt: str) -> dict:
 def identify_front(image_path: Path) -> dict:
     """Extract metadata from a front cover image.
 
-    Edition is derived STRICTLY from barcode presence — a newsstand copy must
-    have a barcode, so no visible barcode means Direct. We don't trust a fuzzy
-    "edition" guess from the model.
+    Edition priority:
+      1. Explicit printed edition text WINS. Many 90s Direct Editions carry a
+         full UPC barcode AND the words "DIRECT EDITION" beside it, so the old
+         "barcode => newsstand" rule mislabeled them. If the cover actually
+         prints "DIRECT EDITION" / "NEWSSTAND", trust that text.
+      2. Otherwise fall back to the barcode heuristic — a newsstand copy must
+         have a barcode, so no visible barcode means Direct.
     """
     result = extract_metadata(image_path, FRONT_PROMPT)
-    result["edition"] = "newsstand" if result.get("barcode_present") is True else "direct"
+    edition_text = str(result.get("edition_text") or "").strip().lower()
+    if "direct" in edition_text:
+        result["edition"] = "direct"
+    elif "newsstand" in edition_text:
+        result["edition"] = "newsstand"
+    else:
+        result["edition"] = "newsstand" if result.get("barcode_present") is True else "direct"
     return result
 
 
