@@ -5,9 +5,9 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 type Result = {
-  type: "Series" | "Creator" | "Character";
+  type: "Series" | "Creator" | "Character" | "Issue";
   id: number;
-  name: string;
+  name?: string;
   year_began?: number;
   year_ended?: number;
   issue_count?: number;
@@ -16,6 +16,10 @@ type Result = {
   birth_year?: number;
   universe?: string;
   year_first_published?: number;
+  // Issue results
+  number?: string;
+  variant_name?: string | null;
+  series_name?: string;
 };
 
 // TODO: this whole file gets rewritten as a server component in Task 2.4
@@ -78,6 +82,13 @@ function HomeInner() {
         if (r.issue_count) parts.push(`${r.issue_count} issues`);
         return parts.join(" · ");
       }
+      case "Issue": {
+        const parts: string[] = [];
+        if (r.variant_name) parts.push(r.variant_name);
+        if (r.publisher) parts.push(r.publisher);
+        if (r.year_began) parts.push(String(r.year_began));
+        return parts.join(" · ");
+      }
       case "Creator":
         return r.birth_year ? `b. ${r.birth_year}` : "";
       case "Character": {
@@ -99,7 +110,7 @@ function HomeInner() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search series, creators, characters..."
+          placeholder="Search series, issues (e.g. Amazing Spider-Man #213), creators..."
           style={{
             width: "100%",
             padding: "12px 16px",
@@ -138,12 +149,16 @@ function HomeInner() {
                       ? "#e3f2fd"
                       : r.type === "Creator"
                       ? "#f3e5f5"
+                      : r.type === "Issue"
+                      ? "#fff3e0"
                       : "#e8f5e9",
                   color:
                     r.type === "Series"
                       ? "#1565c0"
                       : r.type === "Creator"
                       ? "#7b1fa2"
+                      : r.type === "Issue"
+                      ? "#e65100"
                       : "#2e7d32",
                 }}
               >
@@ -156,6 +171,12 @@ function HomeInner() {
               ) : r.type === "Creator" ? (
                 <Link href={`/creator/${r.id}`} style={{ color: "inherit", textDecoration: "none" }}>
                   <strong style={{ borderBottom: "1px solid #ccc" }}>{r.name}</strong>
+                </Link>
+              ) : r.type === "Issue" ? (
+                <Link href={`/issue/${r.id}`} style={{ color: "inherit", textDecoration: "none" }}>
+                  <strong style={{ borderBottom: "1px solid #ccc" }}>
+                    {r.series_name} #{r.number}
+                  </strong>
                 </Link>
               ) : (
                 <strong>{r.name}</strong>
