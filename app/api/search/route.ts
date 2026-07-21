@@ -31,15 +31,33 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  // Strip "#..." suffix for series search (e.g. "Amazing Spider-Man #1" → "Amazing Spider-Man")
-  const seriesQ = raw.replace(/#.*$/, "").trim() || raw;
-  // Strip leading "The " and punctuation from the query
-  const seriesQClean = stripPunctuation(seriesQ.replace(/^the\s+/i, ""));
+  // An issue number can arrive two ways:
+  //   "Amazing Spider-Man #213" → explicit "#": strong intent → issue-only results.
+  //   "Amazing Spider-Man 3"    → trailing bare number: ambiguous → show BOTH the
+  //                               matching issue(s) AND the series (with the number
+  //                               stripped off the name, so the base series shows).
+  // A 4-digit trailing number is left as part of the name — it's usually a year
+  // or part of the title (e.g. "Spider-Man 2099"); use "#" to force those.
+  let issueNumber: string | null = null;
+  let explicitHash = false;
+  let seriesText = raw;
 
-  // Detect an explicit issue number, e.g. "Amazing Spider-Man #213" → "213".
-  // Grabs the first token after the "#" (numbers, ½, -1, 1A, etc.).
-  const issueMatch = raw.match(/#\s*([^\s]+)/);
-  const issueNumber = issueMatch ? issueMatch[1].trim() : null;
+  const hashMatch = raw.match(/#\s*([^\s]+)/);
+  if (hashMatch) {
+    issueNumber = hashMatch[1].trim();
+    explicitHash = true;
+    seriesText = raw.replace(/#.*$/, "");
+  } else {
+    const trailMatch = raw.match(/^(.*\S)\s+(\d{1,3})$/);
+    if (trailMatch && stripPunctuation(trailMatch[1]).length >= 2) {
+      issueNumber = trailMatch[2];
+      seriesText = trailMatch[1];
+    }
+  }
+
+  // Strip leading "The " and punctuation from the series name for fuzzy compare.
+  const seriesQ = seriesText.trim() || raw;
+  const seriesQClean = stripPunctuation(seriesQ.replace(/^the\s+/i, ""));
 
   const seriesContains = `%${seriesQClean}%`;
   const seriesStartsWith = `${seriesQClean}%`;
@@ -47,12 +65,11 @@ export async function GET(request: NextRequest) {
   const startsWith = `${raw}%`;
 
   try {
-  // Issue-level search: "<series> #<number>" returns the matching issue(s),
-  // including every variant that shares that series + number (direct,
-  // newsstand, Canadian, UK, …). GCD stores variants with the SAME number as
-  // their base issue, so a single number match returns base + all variants.
-  // Falls through to the normal series/creator/character search below when
-  // there is no "#<number>" in the query.
+  // Issue-level results when a number is present. Matches every variant that
+  // shares that series + number (direct, newsstand, Canadian, UK, …) — GCD
+  // stores variants under the SAME number as their base issue, so one number
+  // match returns base + all variants.
+  let issueResults: Array<Record<string, unknown>> = [];
   if (issueNumber && seriesQClean.length >= 2) {
     const issues = await pool.query(
       `SELECT i.id, i.number, i.variant_name, i.variant_of_id,
@@ -69,8 +86,12 @@ export async function GET(request: NextRequest) {
        LIMIT 100`,
       [seriesQClean, seriesStartsWith, seriesContains, issueNumber]
     );
-    const results = issues.rows.map((r) => ({ type: "Issue" as const, ...r }));
-    return NextResponse.json({ results });
+    issueResults = issues.rows.map((r) => ({ type: "Issue" as const, ...r }));
+  }
+
+  // Explicit "#<number>" → the user clearly wants that issue: return issues only.
+  if (explicitHash) {
+    return NextResponse.json({ results: issueResults });
   }
 
   const [series, creators, characters] = await Promise.all([
@@ -101,6 +122,7 @@ export async function GET(request: NextRequest) {
   ]);
 
   const results = [
+    ...issueResults,
     ...series.rows.map((r) => ({ type: "Series" as const, ...r })),
     ...creators.rows.map((r) => ({ type: "Creator" as const, ...r })),
     ...characters.rows.map((r) => ({ type: "Character" as const, ...r })),
