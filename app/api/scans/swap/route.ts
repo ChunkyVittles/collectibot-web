@@ -45,37 +45,21 @@ export async function POST(req: NextRequest) {
   // But simpler: just swap the DB records (scan_type and image_url) without touching R2
   // Since the image_url already points to the correct file, we just swap which row is "front" vs "back"
 
-  const client = await pool.connect();
+  // The db wrapper exposes only pool.query (a fresh connection per call), not a
+  // long-lived client for BEGIN/COMMIT. A single UPDATE is atomic on its own, so
+  // do the whole swap in one statement: the front row becomes the back cover
+  // (taking the back's URL) and the back row becomes the front cover.
   try {
-    await client.query("BEGIN");
-
-    // Swap scan_type
-    await client.query(
-      `UPDATE scans SET scan_type = 'back_cover' WHERE id = $1`,
-      [front.id]
+    await pool.query(
+      `UPDATE scans SET
+         scan_type = CASE id WHEN $1 THEN 'back_cover' WHEN $2 THEN 'front_cover' END,
+         image_url = CASE id WHEN $1 THEN $3 WHEN $2 THEN $4 END
+       WHERE id IN ($1, $2)`,
+      [front.id, back.id, back.image_url, front.image_url]
     );
-    await client.query(
-      `UPDATE scans SET scan_type = 'front_cover' WHERE id = $1`,
-      [back.id]
-    );
-
-    // Swap image_url so the URLs match the new scan_type
-    await client.query(
-      `UPDATE scans SET image_url = $1 WHERE id = $2`,
-      [back.image_url, front.id]
-    );
-    await client.query(
-      `UPDATE scans SET image_url = $1 WHERE id = $2`,
-      [front.image_url, back.id]
-    );
-
-    await client.query("COMMIT");
   } catch (e) {
-    await client.query("ROLLBACK");
     console.error("Swap failed:", e);
     return NextResponse.json({ error: "Swap failed" }, { status: 500 });
-  } finally {
-    client.release();
   }
 
   // Now rename the actual R2 files to match
@@ -233,12 +217,12 @@ async function signedR2PutRequest(
       "x-amz-content-sha256": bodyHash,
       Authorization: authorization,
     },
-    body,
+    body: body as BodyInit,
   });
 }
 
 async function sha256Hex(data: Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", data as ArrayBuffer);
+  const hash = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
   return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
