@@ -1,6 +1,7 @@
 import pool from "@/app/lib/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import SeriesIssueList from "@/app/components/SeriesIssueList";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -32,17 +33,6 @@ export async function generateMetadata({ params }: Props) {
   if (years) descBits.push(years);
   if (s.issue_count && s.issue_count > 0) descBits.push(`${s.issue_count} issues`);
   return { title, description: `${descBits.join(", ")}. Browse issues, key issues, and creators.` };
-}
-
-function decadeLabel(year: number): string {
-  const d = Math.floor(year / 10) * 10;
-  return `${d}s`;
-}
-
-function yearFromKeyDate(kd: string | null): number | null {
-  if (!kd || kd.length < 4) return null;
-  const y = parseInt(kd.substring(0, 4), 10);
-  return isNaN(y) ? null : y;
 }
 
 type FeaturedCreator = {
@@ -148,23 +138,35 @@ export default async function SeriesPage({ params }: Props) {
       : `${series.year_began}–${series.year_ended}`
     : `${series.year_began}–present`;
 
-  // Group issues by decade
-  const decades = new Map<string, typeof issues>();
-  const undated: typeof issues = [];
-  for (const issue of issues) {
-    const year = yearFromKeyDate(issue.key_date || issue.publication_date);
-    if (!year) {
-      undated.push(issue);
-    } else {
-      const label = decadeLabel(year);
-      if (!decades.has(label)) decades.set(label, []);
-      decades.get(label)!.push(issue);
-    }
+  // Fold the key-issue annotations into one flat, chronological issue list.
+  // Each issue carries is_key + its comment inline (no separate "Key issues"
+  // section, no decade grouping) — SeriesIssueList renders the single list and
+  // the "Only show keys" toggle. issuesRes is already ordered chronologically
+  // (key_date ASC NULLS LAST, number ASC), so undated issues fall to the end.
+  const keyComments = new Map<string, string>();
+  for (const k of keyIssuesRes.rows) {
+    const c = [k.key_comment_1, k.key_comment_2, k.key_comment_3].filter(Boolean).join(" · ");
+    keyComments.set(String(k.issue_id), c);
   }
-  const sortedDecades = Array.from(decades.keys()).sort();
+  const issueList = issues.map((issue) => {
+    const idStr = String(issue.id);
+    return {
+      id: issue.id as number,
+      number: issue.number as string,
+      variant_name: (issue.variant_name ?? null) as string | null,
+      date: (issue.publication_date || issue.key_date || "") as string,
+      on_sale_date:
+        issue.on_sale_date && issue.on_sale_date !== issue.publication_date
+          ? (issue.on_sale_date as string)
+          : null,
+      price: (issue.price ?? null) as string | null,
+      has_scan: scannedIssues.has(idStr),
+      is_key: keyComments.has(idStr),
+      key_comment: keyComments.get(idStr) ?? null,
+    };
+  });
 
   const featuredCreators = featuredCreatorsRes.rows;
-  const keyIssues = keyIssuesRes.rows;
   const variantCount = issues.filter((i) => i.variant_of_id).length;
 
   return (
@@ -271,45 +273,6 @@ export default async function SeriesPage({ params }: Props) {
         </dl>
       </section>
 
-      {/* Key issues */}
-      {keyIssues.length > 0 && (
-        <section style={{ marginBottom: 32 }}>
-          <h2 style={{ fontSize: 18, marginBottom: 12 }}>Key issues</h2>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {keyIssues.map((k) => {
-              const comments = [k.key_comment_1, k.key_comment_2, k.key_comment_3].filter(Boolean) as string[];
-              const date = k.publication_date || (k.key_date ? k.key_date.slice(0, 7).replace(/-00$/, "") : "");
-              return (
-                <li key={k.issue_id} style={{ display: "flex", gap: 12, padding: "8px 0", borderBottom: "1px solid #f0f0f0" }}>
-                  <Link href={`/issue/${k.issue_id}`} style={{ flexShrink: 0 }}>
-                    {k.has_scan ? (
-                      <img
-                        src={`/api/scans/image?issue=${k.issue_id}&side=front`}
-                        alt=""
-                        style={{ width: 40, height: 60, objectFit: "cover", borderRadius: 2 }}
-                      />
-                    ) : (
-                      <div style={{ width: 40, height: 60, background: "#1a1a1a", borderRadius: 2, border: "1px solid #333" }} />
-                    )}
-                  </Link>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div>
-                      <Link href={`/issue/${k.issue_id}`} style={{ color: "inherit", fontWeight: 600 }}>
-                        #{k.number}
-                      </Link>
-                      {date && <span style={{ color: "#888", marginLeft: 8, fontSize: 13 }}>{date}</span>}
-                    </div>
-                    <div style={{ fontSize: 13, color: "#bbb", marginTop: 2 }}>
-                      {comments.join(" · ")}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
       {/* Featured creators */}
       {featuredCreators.length > 0 && (
         <section style={{ marginBottom: 32 }}>
@@ -338,125 +301,9 @@ export default async function SeriesPage({ params }: Props) {
         </section>
       )}
 
-      {/* Decade-grouped timeline */}
-      <h2 style={{ fontSize: 18, marginTop: 32, marginBottom: 12 }}>Issues by decade</h2>
-      {sortedDecades.map((decade) => {
-        const items = decades.get(decade)!;
-        return (
-          <div key={decade} style={{ marginBottom: 32 }}>
-            <h3 style={{ fontSize: 20, borderBottom: "2px solid #333", paddingBottom: 4, marginBottom: 12 }}>
-              {decade}
-              <span style={{ fontWeight: 400, fontSize: 14, color: "#999", marginLeft: 8 }}>
-                ({items.length.toLocaleString()})
-              </span>
-            </h3>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                  <th style={{ padding: "4px 8px 4px 0", width: 48 }}></th>
-                  <th style={{ padding: "4px 8px", width: 60 }}>#</th>
-                  <th style={{ padding: "4px 8px" }}>Date</th>
-                  <th style={{ padding: "4px 8px", width: 80 }}>Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((issue) => (
-                  <tr key={issue.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <td style={{ padding: "4px 8px 4px 0" }}>
-                      <Link href={`/issue/${issue.id}`} style={{ display: "block", textDecoration: "none" }}>
-                        {scannedIssues.has(String(issue.id)) ? (
-                          <img
-                            src={`/api/scans/image?issue=${issue.id}&side=front&t=${cacheBust}`}
-                            alt=""
-                            style={{ width: 32, height: 48, objectFit: "cover", borderRadius: 2, verticalAlign: "middle" }}
-                          />
-                        ) : (
-                          <div style={{ width: 32, height: 48, background: "#1a1a1a", borderRadius: 2, border: "1px solid #333" }} />
-                        )}
-                      </Link>
-                    </td>
-                    <td style={{ padding: "4px 8px", fontWeight: 600 }}>
-                      <Link href={`/issue/${issue.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-                        {issue.number}
-                        {issue.variant_name && (
-                          <span style={{ fontWeight: 400, color: "#999", fontSize: 12 }}> ({issue.variant_name})</span>
-                        )}
-                      </Link>
-                    </td>
-                    <td style={{ padding: "4px 8px", color: "#666" }}>
-                      <Link href={`/issue/${issue.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-                        {issue.publication_date || issue.key_date || "—"}
-                        {issue.on_sale_date && issue.on_sale_date !== issue.publication_date && (
-                          <span style={{ color: "#888", fontSize: 12 }}> · on sale {issue.on_sale_date}</span>
-                        )}
-                      </Link>
-                    </td>
-                    <td style={{ padding: "4px 8px", color: "#666" }}>
-                      <Link href={`/issue/${issue.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-                        {issue.price || "—"}
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-      })}
-
-      {undated.length > 0 && (
-        <div style={{ marginBottom: 32 }}>
-          <h3 style={{ fontSize: 20, borderBottom: "2px solid #333", paddingBottom: 4, marginBottom: 12 }}>
-            Undated
-            <span style={{ fontWeight: 400, fontSize: 14, color: "#999", marginLeft: 8 }}>
-              ({undated.length.toLocaleString()})
-            </span>
-          </h3>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                <th style={{ padding: "4px 8px 4px 0", width: 48 }}></th>
-                <th style={{ padding: "4px 8px", width: 60 }}>#</th>
-                <th style={{ padding: "4px 8px" }}>Date</th>
-                <th style={{ padding: "4px 8px", width: 80 }}>Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {undated.map((issue) => (
-                <tr key={issue.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                  <td style={{ padding: "4px 8px 4px 0" }}>
-                    <Link href={`/issue/${issue.id}`} style={{ display: "block", textDecoration: "none" }}>
-                      {scannedIssues.has(String(issue.id)) ? (
-                        <img
-                          src={`/api/scans/image?issue=${issue.id}&side=front&t=${cacheBust}`}
-                          alt=""
-                          style={{ width: 32, height: 48, objectFit: "cover", borderRadius: 2, verticalAlign: "middle" }}
-                        />
-                      ) : (
-                        <div style={{ width: 32, height: 48, background: "#1a1a1a", borderRadius: 2, border: "1px solid #333" }} />
-                      )}
-                    </Link>
-                  </td>
-                  <td style={{ padding: "4px 8px", fontWeight: 600 }}>
-                    <Link href={`/issue/${issue.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-                      {issue.number}
-                      {issue.variant_name && (
-                        <span style={{ fontWeight: 400, color: "#999", fontSize: 12 }}> ({issue.variant_name})</span>
-                      )}
-                    </Link>
-                  </td>
-                  <td style={{ padding: "4px 8px", color: "#666" }}>—</td>
-                  <td style={{ padding: "4px 8px", color: "#666" }}>
-                    <Link href={`/issue/${issue.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-                      {issue.price || "—"}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* All issues — one flat list, keys marked inline, with an
+          "Only show keys" toggle. Applies to every series page. */}
+      <SeriesIssueList issues={issueList} cacheBust={cacheBust} />
     </div>
   );
 }
